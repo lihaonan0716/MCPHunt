@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use this software or dataset, please cite the paper below."
+title: "MCPHunt"
+version: 1.0.0
+date-released: 2026-04-29
+license: MIT
+repository-code: "https://github.com/lihaonan0716/MCPHunt"
+authors:
+  - family-names: Li
+    given-names: Haonan
+    email: lihaonan0716@gmail.com
+  - family-names: Sun
+    given-names: Tianjun
+  - family-names: Wang
+    given-names: Yongqing
+  - family-names: Zhang
+    given-names: Qisheng
+preferred-citation:
+  type: generic
+  status: preprint
+  title: "MCPHunt: An Evaluation Framework for Cross-Boundary Data Propagation in Multi-Server MCP Agents"
+  authors:
+    - family-names: Li
+      given-names: Haonan
+    - family-names: Sun
+      given-names: Tianjun
+    - family-names: Wang
+      given-names: Yongqing
+    - family-names: Zhang
+      given-names: Qisheng
+  year: 2026

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcphunt"
+version = "0.1.0"
+description = "Executable evaluation artifact for compositional risks in MCP agents"
+license = {text = "MIT"}
+requires-python = ">=3.12"
+dependencies = [
+  "numpy",
+  "pandas",
+  "scipy",
+  "statsmodels",
+  "pyyaml",
+]
+
+[project.optional-dependencies]
+collect = [
+  "openai",
+  "pyyaml",
+  "mcp-server-git==2026.1.14",
+]
+download = [
+  "huggingface_hub",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["workspace*", "archive", "artifacts", "results", ".omc", ".omx"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,15 @@
+{
+  "_comment": "Pinned MCP server versions for reproducible experiments. Update and re-validate before each experiment batch.",
+  "uvx": {
+    "mcp-server-git": "2026.1.14",
+    "mcp-server-fetch": "2025.4.7",
+    "mcp-server-time": "2026.1.26",
+    "mcp-server-sqlite": "2025.4.25",
+    "mcp-server-memory": "0.0.1"
+  },
+  "npx": {
+    "@modelcontextprotocol/server-filesystem": "2026.1.14",
+    "@playwright/mcp": "0.0.70",
+    "shell-command-mcp": "0.0.1"
+  }
+}

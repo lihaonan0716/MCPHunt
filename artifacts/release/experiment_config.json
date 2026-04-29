@@ -1,0 +1,607 @@
+{
+  "project_name": "MCPHunt",
+  "study_name": "risk-guided discovery and controlled validation of compositional risks in multi-server MCP agents",
+  "device": "mps",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "requested_seed_budget": 10,
+  "effective_seed_budget": 10,
+  "total_wall_clock_budget_seconds": 2000.0,
+  "per_seed_runtime_target_seconds": 30.0,
+  "max_conditions": 17,
+  "top_k": 20,
+  "bootstrap_resamples": 1000,
+  "bootstrap_confidence_level": 0.95,
+  "validation_fraction": 0.4,
+  "calibration_fraction": 0.2,
+  "test_fraction": 0.4,
+  "hidden_dim": 32,
+  "max_epochs": 8,
+  "learning_rate": 0.01,
+  "weight_decay": 0.0001,
+  "batch_size": 256,
+  "split_group_keys": [
+    "server_family_cluster",
+    "planted_risk_template"
+  ],
+  "results_filename": "results.json",
+  "factorial_reporting_required": true,
+  "conditions": {
+    "authority_amplification_coordination_hybrid_monitor": {
+      "name": "authority_amplification_coordination_hybrid_monitor",
+      "stage": "runtime",
+      "dataset": "compose_riskbench_validation_monitor_v1",
+      "description": "Hybrid runtime monitor with novelty, authority, argument-shape, and over-coordination signals.",
+      "model_family": "runtime_monitor",
+      "objective": "Core H4 method.",
+      "metrics": [
+        "early_detection_rate",
+        "precision_at_fixed_80_recall",
+        "median_detection_lead_time_steps",
+        "false_alert_rate_per_run",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "authority_gap": [
+          "narrow",
+          "wide"
+        ],
+        "coordination_density": [
+          "normal",
+          "over_coordinated"
+        ]
+      },
+      "enabled_features": [
+        "transition_novelty",
+        "argument_shape_anomaly",
+        "authority_amplification",
+        "over_coordination",
+        "lead_time_scoring",
+        "calibrated_alerting"
+      ],
+      "ablation_of": null,
+      "expected_runtime_seconds": 1.8
+    },
+    "clipped_splice_only_counterfactual_validator": {
+      "name": "clipped_splice_only_counterfactual_validator",
+      "stage": "validation",
+      "dataset": "compose_riskbench_validation_monitor_v1",
+      "description": "Tier-1 clipped-splice replay without expansion.",
+      "model_family": "counterfactual_validator",
+      "objective": "Conservative H3 baseline.",
+      "metrics": [
+        "tier1_recovery_rate",
+        "tier2_incremental_recovery_rate",
+        "unsafe_incident_rate",
+        "minimal_trigger_length",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "authority_gap": [
+          "narrow",
+          "wide"
+        ],
+        "coordination_density": [
+          "normal",
+          "over_coordinated"
+        ]
+      },
+      "enabled_features": [
+        "deterministic_replay",
+        "clipped_splice",
+        "zero_extra_server_switches"
+      ],
+      "ablation_of": null,
+      "expected_runtime_seconds": 1.8
+    },
+    "distilled_pairwise_ranker_without_translation_pressure": {
+      "name": "distilled_pairwise_ranker_without_translation_pressure",
+      "stage": "discovery",
+      "dataset": "compose_riskbench_discovery_v1",
+      "description": "Ablation removing translation-pressure from the distilled pairwise model.",
+      "model_family": "pairwise_ranker",
+      "objective": "Isolate compression-only behavior for H1.",
+      "metrics": [
+        "missed_risky_composition_rate_at_20",
+        "top20_recall",
+        "precision_at_20",
+        "auroc",
+        "average_precision",
+        "time_to_discovery_steps",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "translation_pressure": [
+          "low",
+          "high"
+        ],
+        "risky_motif_order": [
+          "pairwise_dominant",
+          "triadic_sparse"
+        ]
+      },
+      "enabled_features": [
+        "schema_presence",
+        "permission_frequency",
+        "pairwise_edges",
+        "short_prefix_frequency",
+        "distilled_handoff_compression"
+      ],
+      "ablation_of": "distilled_translation_pressure_pairwise_ranker",
+      "expected_runtime_seconds": 1.8
+    },
+    "distilled_translation_pressure_pairwise_ranker": {
+      "name": "distilled_translation_pressure_pairwise_ranker",
+      "stage": "discovery",
+      "dataset": "compose_riskbench_discovery_v1",
+      "description": "Distilled pairwise ranker with translation-pressure and compression features.",
+      "model_family": "pairwise_ranker",
+      "objective": "Core H1 method.",
+      "metrics": [
+        "missed_risky_composition_rate_at_20",
+        "top20_recall",
+        "precision_at_20",
+        "auroc",
+        "average_precision",
+        "time_to_discovery_steps",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "translation_pressure": [
+          "low",
+          "high"
+        ],
+        "risky_motif_order": [
+          "pairwise_dominant",
+          "triadic_sparse"
+        ]
+      },
+      "enabled_features": [
+        "schema_presence",
+        "permission_frequency",
+        "pairwise_edges",
+        "short_prefix_frequency",
+        "translation_pressure",
+        "distilled_handoff_compression",
+        "authority_amplification"
+      ],
+      "ablation_of": null,
+      "expected_runtime_seconds": 1.8
+    },
+    "fixed_minimal_schema_frequency_pairwise_prefix_ranker": {
+      "name": "fixed_minimal_schema_frequency_pairwise_prefix_ranker",
+      "stage": "discovery",
+      "dataset": "compose_riskbench_discovery_v1",
+      "description": "Manual minimal schema with pairwise and short-prefix frequency features.",
+      "model_family": "pairwise_ranker",
+      "objective": "Schema-first baseline for H1 and H2.",
+      "metrics": [
+        "missed_risky_composition_rate_at_20",
+        "top20_recall",
+        "precision_at_20",
+        "auroc",
+        "average_precision",
+        "time_to_discovery_steps",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "translation_pressure": [
+          "low",
+          "high"
+        ],
+        "risky_motif_order": [
+          "pairwise_dominant",
+          "triadic_sparse"
+        ]
+      },
+      "enabled_features": [
+        "schema_presence",
+        "permission_frequency",
+        "pairwise_edges",
+        "short_prefix_frequency"
+      ],
+      "ablation_of": null,
+      "expected_runtime_seconds": 1.8
+    },
+    "gbdt_discovery_baseline": {
+      "name": "gbdt_discovery_baseline",
+      "stage": "discovery",
+      "dataset": "compose_riskbench_discovery_v1",
+      "description": "Gradient Boosted Decision Trees (100 trees, depth 3) on the same features as RIFT \u2014 strongest tabular ML baseline testing whether non-linear feature interactions suffice.",
+      "model_family": "external_baseline_ranker",
+      "objective": "Non-linear ensemble baseline isolating value of RIFT's compositional structure beyond feature interactions.",
+      "metrics": [
+        "missed_risky_composition_rate_at_20",
+        "top20_recall",
+        "precision_at_20",
+        "auroc",
+        "average_precision",
+        "time_to_discovery_steps",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "translation_pressure": [
+          "low",
+          "high"
+        ],
+        "risky_motif_order": [
+          "pairwise_dominant",
+          "triadic_sparse"
+        ]
+      },
+      "enabled_features": [
+        "all_features_gbdt"
+      ],
+      "ablation_of": null,
+      "expected_runtime_seconds": 0.5
+    },
+    "graph_path_reachability_discovery_baseline": {
+      "name": "graph_path_reachability_discovery_baseline",
+      "stage": "discovery",
+      "dataset": "compose_riskbench_discovery_v1",
+      "description": "Graph-structural baseline using action-level reachability, authority escalation paths, and dangerous-sink presence \u2014 no translation pressure or learned features.",
+      "model_family": "external_baseline_ranker",
+      "objective": "Stronger structural external baseline isolating value of compositional signals beyond graph reachability.",
+      "metrics": [
+        "missed_risky_composition_rate_at_20",
+        "top20_recall",
+        "precision_at_20",
+        "auroc",
+        "average_precision",
+        "time_to_discovery_steps",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "translation_pressure": [
+          "low",
+          "high"
+        ],
+        "risky_motif_order": [
+          "pairwise_dominant",
+          "triadic_sparse"
+        ]
+      },
+      "enabled_features": [
+        "authority_escalation",
+        "dangerous_sink_reachability",
+        "action_edge_prior"
+      ],
+      "ablation_of": null,
+      "expected_runtime_seconds": 0.5
+    },
+    "learned_classifier_discovery_baseline": {
+      "name": "learned_classifier_discovery_baseline",
+      "stage": "discovery",
+      "dataset": "compose_riskbench_discovery_v1",
+      "description": "Logistic regression on the same features as RIFT but without compositional scoring structure (no pair table, no window discount, no empirical/learned blend).",
+      "model_family": "external_baseline_ranker",
+      "objective": "Learned baseline isolating whether RIFT's value comes from features alone or from compositional combination.",
+      "metrics": [
+        "missed_risky_composition_rate_at_20",
+        "top20_recall",
+        "precision_at_20",
+        "auroc",
+        "average_precision",
+        "time_to_discovery_steps",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "translation_pressure": [
+          "low",
+          "high"
+        ],
+        "risky_motif_order": [
+          "pairwise_dominant",
+          "triadic_sparse"
+        ]
+      },
+      "enabled_features": [
+        "all_features_flat_lr"
+      ],
+      "ablation_of": null,
+      "expected_runtime_seconds": 0.5
+    },
+    "random_forest_discovery_baseline": {
+      "name": "random_forest_discovery_baseline",
+      "stage": "discovery",
+      "dataset": "compose_riskbench_discovery_v1",
+      "description": "Random Forest (200 trees, depth 5) on the same features as RIFT \u2014 second non-linear ensemble for robustness.",
+      "model_family": "external_baseline_ranker",
+      "objective": "Ensemble baseline checking GBDT result is not method-specific.",
+      "metrics": [
+        "missed_risky_composition_rate_at_20",
+        "top20_recall",
+        "precision_at_20",
+        "auroc",
+        "average_precision",
+        "time_to_discovery_steps",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "translation_pressure": [
+          "low",
+          "high"
+        ],
+        "risky_motif_order": [
+          "pairwise_dominant",
+          "triadic_sparse"
+        ]
+      },
+      "enabled_features": [
+        "all_features_rf"
+      ],
+      "ablation_of": null,
+      "expected_runtime_seconds": 0.5
+    },
+    "random_ranking_discovery_baseline": {
+      "name": "random_ranking_discovery_baseline",
+      "stage": "discovery",
+      "dataset": "compose_riskbench_discovery_v1",
+      "description": "External baseline that ranks candidate server pairs uniformly at random.",
+      "model_family": "external_baseline_ranker",
+      "objective": "Lower-bound external baseline establishing chance-level discovery performance.",
+      "metrics": [
+        "missed_risky_composition_rate_at_20",
+        "top20_recall",
+        "precision_at_20",
+        "auroc",
+        "average_precision",
+        "time_to_discovery_steps",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "translation_pressure": [
+          "low",
+          "high"
+        ],
+        "risky_motif_order": [
+          "pairwise_dominant",
+          "triadic_sparse"
+        ]
+      },
+      "enabled_features": [
+        "random_only"
+      ],
+      "ablation_of": null,
+      "expected_runtime_seconds": 0.5
+    },
+    "rule_based_dangerous_sink_validator": {
+      "name": "rule_based_dangerous_sink_validator",
+      "stage": "validation",
+      "dataset": "compose_riskbench_validation_monitor_v1",
+      "description": "External rule-based validator that flags any pair containing a dangerous sink as unsafe, with no replay capability.",
+      "model_family": "external_baseline_validator",
+      "objective": "Rule-only external baseline isolating value of counterfactual replay.",
+      "metrics": [
+        "tier1_recovery_rate",
+        "tier2_incremental_recovery_rate",
+        "unsafe_incident_rate",
+        "minimal_trigger_length",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "authority_gap": [
+          "narrow",
+          "wide"
+        ],
+        "coordination_density": [
+          "normal",
+          "over_coordinated"
+        ]
+      },
+      "enabled_features": [
+        "rule_based_dangerous_sink"
+      ],
+      "ablation_of": null,
+      "expected_runtime_seconds": 0.5
+    },
+    "schema_frequency_only_discovery_baseline": {
+      "name": "schema_frequency_only_discovery_baseline",
+      "stage": "discovery",
+      "dataset": "compose_riskbench_discovery_v1",
+      "description": "External baseline using only raw schema size and permission counts as a linear ranker, with no compositional features.",
+      "model_family": "external_baseline_ranker",
+      "objective": "Schema/permission-only external baseline isolating value of compositional features.",
+      "metrics": [
+        "missed_risky_composition_rate_at_20",
+        "top20_recall",
+        "precision_at_20",
+        "auroc",
+        "average_precision",
+        "time_to_discovery_steps",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "translation_pressure": [
+          "low",
+          "high"
+        ],
+        "risky_motif_order": [
+          "pairwise_dominant",
+          "triadic_sparse"
+        ]
+      },
+      "enabled_features": [
+        "schema_presence",
+        "permission_frequency"
+      ],
+      "ablation_of": null,
+      "expected_runtime_seconds": 0.5
+    },
+    "state_carryover_hidden_edge_triadic_ranker": {
+      "name": "state_carryover_hidden_edge_triadic_ranker",
+      "stage": "discovery",
+      "dataset": "compose_riskbench_discovery_v1",
+      "description": "Triadic ranker with state carryover and hidden-edge inference.",
+      "model_family": "triadic_ranker",
+      "objective": "Core H2 method.",
+      "metrics": [
+        "missed_risky_composition_rate_at_20",
+        "top20_recall",
+        "precision_at_20",
+        "auroc",
+        "average_precision",
+        "time_to_discovery_steps",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "translation_pressure": [
+          "low",
+          "high"
+        ],
+        "risky_motif_order": [
+          "pairwise_dominant",
+          "triadic_sparse"
+        ]
+      },
+      "enabled_features": [
+        "pairwise_edges",
+        "triadic_edges",
+        "hidden_edge_inference",
+        "state_carryover"
+      ],
+      "ablation_of": null,
+      "expected_runtime_seconds": 1.8
+    },
+    "state_carryover_triadic_ranker_without_hidden_edge_inference": {
+      "name": "state_carryover_triadic_ranker_without_hidden_edge_inference",
+      "stage": "discovery",
+      "dataset": "compose_riskbench_discovery_v1",
+      "description": "Triadic ablation without hidden-edge inference.",
+      "model_family": "triadic_ranker",
+      "objective": "Ablation for H2.",
+      "metrics": [
+        "missed_risky_composition_rate_at_20",
+        "top20_recall",
+        "precision_at_20",
+        "auroc",
+        "average_precision",
+        "time_to_discovery_steps",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "translation_pressure": [
+          "low",
+          "high"
+        ],
+        "risky_motif_order": [
+          "pairwise_dominant",
+          "triadic_sparse"
+        ]
+      },
+      "enabled_features": [
+        "pairwise_edges",
+        "triadic_edges",
+        "state_carryover"
+      ],
+      "ablation_of": "state_carryover_hidden_edge_triadic_ranker",
+      "expected_runtime_seconds": 1.8
+    },
+    "threshold_authority_runtime_monitor": {
+      "name": "threshold_authority_runtime_monitor",
+      "stage": "runtime",
+      "dataset": "compose_riskbench_validation_monitor_v1",
+      "description": "External threshold baseline that fires whenever the trace authority gap exceeds one, with no learning component.",
+      "model_family": "external_baseline_monitor",
+      "objective": "Static-threshold external baseline isolating value of learned monitoring signals.",
+      "metrics": [
+        "early_detection_rate",
+        "precision_at_fixed_80_recall",
+        "median_detection_lead_time_steps",
+        "false_alert_rate_per_run",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "authority_gap": [
+          "narrow",
+          "wide"
+        ],
+        "coordination_density": [
+          "normal",
+          "over_coordinated"
+        ]
+      },
+      "enabled_features": [
+        "authority_threshold"
+      ],
+      "ablation_of": null,
+      "expected_runtime_seconds": 0.5
+    },
+    "transition_novelty_only_runtime_monitor": {
+      "name": "transition_novelty_only_runtime_monitor",
+      "stage": "runtime",
+      "dataset": "compose_riskbench_validation_monitor_v1",
+      "description": "Runtime baseline using transition novelty only.",
+      "model_family": "runtime_monitor",
+      "objective": "Baseline for H4.",
+      "metrics": [
+        "early_detection_rate",
+        "precision_at_fixed_80_recall",
+        "median_detection_lead_time_steps",
+        "false_alert_rate_per_run",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "authority_gap": [
+          "narrow",
+          "wide"
+        ],
+        "coordination_density": [
+          "normal",
+          "over_coordinated"
+        ]
+      },
+      "enabled_features": [
+        "transition_novelty",
+        "lead_time_scoring"
+      ],
+      "ablation_of": null,
+      "expected_runtime_seconds": 1.8
+    },
+    "two_tier_bounded_expansion_counterfactual_validator": {
+      "name": "two_tier_bounded_expansion_counterfactual_validator",
+      "stage": "validation",
+      "dataset": "compose_riskbench_validation_monitor_v1",
+      "description": "Tier-1 clipped replay plus Tier-2 bounded expansion.",
+      "model_family": "counterfactual_validator",
+      "objective": "Core H3 method.",
+      "metrics": [
+        "tier1_recovery_rate",
+        "tier2_incremental_recovery_rate",
+        "unsafe_incident_rate",
+        "minimal_trigger_length",
+        "success_rate"
+      ],
+      "regime_factors": {
+        "authority_gap": [
+          "narrow",
+          "wide"
+        ],
+        "coordination_density": [
+          "normal",
+          "over_coordinated"
+        ]
+      },
+      "enabled_features": [
+        "deterministic_replay",
+        "clipped_splice",
+        "bounded_expansion",
+        "two_extra_server_switches",
+        "hashed_state_deduplication",
+        "bounded_context_growth"
+      ],
+      "ablation_of": null,
+      "expected_runtime_seconds": 1.8
+    }
+  }
+}

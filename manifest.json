@@ -1,0 +1,25 @@
+{
+  "project_name": "MCPHunt",
+  "run_id": "rc-20260416-153017-84ad61",
+  "target_conference": "",
+  "files": [
+    "paper/",
+    "src/",
+    "tests/",
+    "requirements.txt",
+    "results/latest/",
+    "artifacts/release/",
+    "artifacts/reports/",
+    "artifacts/paper-build/"
+  ],
+  "generated": "2026-04-16T21:38:07+00:00",
+  "notes": {
+    "paper/": "Conference paper source, bibliography, and figure assets",
+    "src/": "Installable MCPHunt experiment package",
+    "tests/": "Regression smoke tests that lock artifact behavior",
+    "results/latest/": "Latest experiment summary outputs",
+    "artifacts/release/": "Published release artifacts and manifests",
+    "artifacts/reports/": "Verification and sanitization reports",
+    "artifacts/paper-build/": "Compiled paper outputs"
+  }
+}

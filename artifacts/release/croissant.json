@@ -1,0 +1,333 @@
+{
+  "@context": {
+    "@language": "en",
+    "@vocab": "https://schema.org/",
+    "citeAs": "cr:citeAs",
+    "column": "cr:column",
+    "conformsTo": "dct:conformsTo",
+    "cr": "http://mlcommons.org/croissant/",
+    "rai": "http://mlcommons.org/croissant/RAI/",
+    "data": {
+      "@id": "cr:data",
+      "@type": "@json"
+    },
+    "dataType": {
+      "@id": "cr:dataType",
+      "@type": "@vocab"
+    },
+    "dct": "http://purl.org/dc/terms/",
+    "examples": {
+      "@id": "cr:examples",
+      "@type": "@json"
+    },
+    "extract": "cr:extract",
+    "field": "cr:field",
+    "fileProperty": "cr:fileProperty",
+    "fileObject": "cr:fileObject",
+    "fileSet": "cr:fileSet",
+    "format": "cr:format",
+    "includes": "cr:includes",
+    "isLiveDataset": "cr:isLiveDataset",
+    "jsonPath": "cr:jsonPath",
+    "key": "cr:key",
+    "md5": "cr:md5",
+    "parentField": "cr:parentField",
+    "path": "cr:path",
+    "recordSet": "cr:recordSet",
+    "references": "cr:references",
+    "regex": "cr:regex",
+    "repeated": "cr:repeated",
+    "replace": "cr:replace",
+    "sc": "https://schema.org/",
+    "separator": "cr:separator",
+    "source": "cr:source",
+    "subField": "cr:subField",
+    "transform": "cr:transform"
+  },
+  "@type": "sc:Dataset",
+  "conformsTo": "http://mlcommons.org/croissant/1.0",
+  "version": "1.0.0",
+  "license": "https://creativecommons.org/licenses/by/4.0/",
+  "creator": {
+    "@type": "sc:Organization",
+    "name": "Haonan Li"
+  },
+  "publisher": {
+    "@type": "sc:Organization",
+    "name": "Haonan Li"
+  },
+  "datePublished": "2026-05-06",
+  "name": "MCPHunt Agent Traces",
+  "description": "Agent execution traces measuring cross-boundary data propagation in multi-server MCP agents. Contains 3,615 main-benchmark traces from 5 models across 147 tasks and 9 mechanism families, plus 2,885 mitigation-study traces. Each trace includes the full tool-call event log, 11 binary risk signals computed by canary-based taint tracking, CRS stratification labels, and outcome classification.",
+  "keywords": [
+    "MCP",
+    "Model Context Protocol",
+    "agent safety",
+    "data propagation",
+    "cross-boundary",
+    "canary tracking",
+    "tool-use",
+    "benchmark",
+    "evaluation"
+  ],
+  "url": "https://huggingface.co/datasets/lihaonan0716/mcphunt-agent-traces",
+  "citeAs": "@misc{mcphunt2026,\n  title = {MCPHunt: An Evaluation Framework for Cross-Boundary Data Propagation in Multi-Server MCP Agents},\n  author = {Anonymous},\n  year = {2026}\n}",
+  "distribution": [
+    {
+      "@type": "cr:FileObject",
+      "@id": "main_gpt_5_4",
+      "name": "main/gpt_5_4.json",
+      "contentUrl": "main/gpt_5_4.json",
+      "encodingFormat": "application/json"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "main_gpt_5_2",
+      "name": "main/gpt_5_2.json",
+      "contentUrl": "main/gpt_5_2.json",
+      "encodingFormat": "application/json"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "main_deepseek_v4_flash",
+      "name": "main/deepseek_v4_flash.json",
+      "contentUrl": "main/deepseek_v4_flash.json",
+      "encodingFormat": "application/json"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "main_gemini_3_1_pro_preview",
+      "name": "main/gemini_3_1_pro_preview.json",
+      "contentUrl": "main/gemini_3_1_pro_preview.json",
+      "encodingFormat": "application/json"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "main_MiniMax_M2_7",
+      "name": "main/MiniMax_M2_7.json",
+      "contentUrl": "main/MiniMax_M2_7.json",
+      "encodingFormat": "application/json"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "meta_regression",
+      "name": "meta/regression_data.csv",
+      "contentUrl": "meta/regression_data.csv",
+      "encodingFormat": "text/csv"
+    }
+  ],
+  "recordSet": [
+    {
+      "@type": "cr:RecordSet",
+      "@id": "agent_traces",
+      "name": "agent_traces",
+      "description": "Per-trace records from multi-server MCP agent execution. Each record represents one complete task execution with canary-based propagation labels.",
+      "field": [
+        {
+          "@type": "cr:Field",
+          "@id": "trace_id",
+          "name": "trace_id",
+          "description": "Unique trace identifier.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "main_gpt_5_4"
+            },
+            "extract": {
+              "jsonPath": "$.traces[*].trace_id"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "task_id",
+          "name": "task_id",
+          "description": "Task identifier from the 147-task registry.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "main_gpt_5_4"
+            },
+            "extract": {
+              "jsonPath": "$.traces[*].task_id"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "model",
+          "name": "model",
+          "description": "LLM model identifier.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "main_gpt_5_4"
+            },
+            "extract": {
+              "jsonPath": "$.traces[*].model"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "env_type",
+          "name": "env_type",
+          "description": "Environment variant: risky_v1/v2/v3, benign, hard_neg_v1/v2/v3.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "main_gpt_5_4"
+            },
+            "extract": {
+              "jsonPath": "$.traces[*].env_type"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "risk_mechanism",
+          "name": "risk_mechanism",
+          "description": "Mechanism family: file_to_file, browser_to_local, etc.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "main_gpt_5_4"
+            },
+            "extract": {
+              "jsonPath": "$.traces[*].risk_mechanism"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "risk_type",
+          "name": "risk_type",
+          "description": "Control type: risk, benign, hard_negative.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "main_gpt_5_4"
+            },
+            "extract": {
+              "jsonPath": "$.traces[*].risk_type"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "outcome",
+          "name": "outcome",
+          "description": "Outcome classification: safe_success, unsafe_success, safe_failure, unsafe_failure.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "main_gpt_5_4"
+            },
+            "extract": {
+              "jsonPath": "$.traces[*].outcome"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "task_completed",
+          "name": "task_completed",
+          "description": "Whether the agent completed the requested task.",
+          "dataType": "sc:Boolean",
+          "source": {
+            "fileObject": {
+              "@id": "main_gpt_5_4"
+            },
+            "extract": {
+              "jsonPath": "$.traces[*].task_completed"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "num_events",
+          "name": "num_events",
+          "description": "Number of tool-call events in the trace.",
+          "dataType": "sc:Integer",
+          "source": {
+            "fileObject": {
+              "@id": "main_gpt_5_4"
+            },
+            "extract": {
+              "jsonPath": "$.traces[*].num_events"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "num_turns",
+          "name": "num_turns",
+          "description": "Number of LLM turns.",
+          "dataType": "sc:Integer",
+          "source": {
+            "fileObject": {
+              "@id": "main_gpt_5_4"
+            },
+            "extract": {
+              "jsonPath": "$.traces[*].num_turns"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "duration_s",
+          "name": "duration_s",
+          "description": "Wall-clock duration in seconds.",
+          "dataType": "sc:Float",
+          "source": {
+            "fileObject": {
+              "@id": "main_gpt_5_4"
+            },
+            "extract": {
+              "jsonPath": "$.traces[*].duration_s"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "mitigation_level",
+          "name": "mitigation_level",
+          "description": "Prompt mitigation level: none, generic, moderate, detailed.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "main_gpt_5_4"
+            },
+            "extract": {
+              "jsonPath": "$.traces[*].mitigation_level"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "rai:dataCollection": "All traces are collected by running LLM agents (via OpenAI-compatible APIs) against 8 MCP servers in controlled sandbox environments. Workspaces contain synthetic canary credentials; no real user data or production systems are involved. Each trace records the full sequence of tool calls, their arguments and results, and post-hoc canary-based risk labels.",
+  "rai:dataCollectionType": "Synthetic",
+  "rai:dataCollectionRawData": "Raw traces are the primary data. Environment configurations and canary values are defined in src/mcphunt/environments.py and src/mcphunt/canary_registry.py.",
+  "rai:dataCollectionTimeframe": "2026-Q1 to 2026-Q2",
+  "rai:dataAnnotationProtocol": "Risk labels are computed deterministically by the canary-based labeling pipeline (src/mcphunt/labeling.py). 11 binary risk signals are evaluated per trace using per-canary causal tracking with temporal ordering. CRS stratification labels were assigned before experiments by two annotators (Cohen's kappa = 0.89). No crowdsourcing is involved.",
+  "rai:dataAnnotationPlatform": "Automated pipeline (labeling.py)",
+  "rai:dataAnnotationAnalysis": "The labeling pipeline is deterministic and reproducible. Mutation testing (test_labeling_integrity.py) validates that injected canaries are detected and safe traces produce no false positives. CRS inter-annotator agreement: 97.3%.",
+  "rai:dataPreprocessingProtocol": [
+    "Traces are sanitized to remove local usernames and paths (sanitize_traces.py).",
+    "Risk signals are recomputed offline to ensure label consistency (relabel_traces.py).",
+    "Trace structure and critical fields are validated post-sanitization."
+  ],
+  "rai:dataReleaseMaintenancePlan": "The dataset is versioned. The maintainers commit to hosting and maintaining the dataset for at least 24 months after publication.",
+  "rai:dataLimitation": "All 147 tasks are researcher-designed and synthetic. The 8 MCP servers represent common patterns but not the full ecosystem. Detection captures exact and near-exact canary matches but misses paraphrased propagation. Cloud-hosted model endpoints may be updated or deprecated by providers after publication.",
+  "rai:dataSocialImpact": "Intended for research on agent safety evaluation. The framework identifies high-risk source-to-sink topologies, which could in principle guide adversaries. This is mitigated by using only synthetic canary credentials and releasing exclusively for defensive pre-deployment evaluation.",
+  "rai:dataBiases": "Task design reflects the authors' conception of compositional data-flow risks. Mechanism families may over-represent patterns the authors prioritized. Hard-negative and benign controls are included to mitigate one-sided coverage.",
+  "rai:personalSensitiveInformation": "None. All credentials in traces are synthetic canary values (e.g., sk_live_*, AKIA*, ghp_*). Traces are sanitized to remove local usernames and filesystem paths before release.",
+  "rai:dataUseCases": [
+    "Measuring cross-boundary data propagation in multi-server MCP agents",
+    "Evaluating prompt-level and orchestration-level mitigation strategies",
+    "Benchmarking canary-based taint tracking for agent safety",
+    "Studying pathway-specific propagation patterns across mechanism families",
+    "Educational material for tool-use agent safety"
+  ]
+}

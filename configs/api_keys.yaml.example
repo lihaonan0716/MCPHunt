@@ -1,0 +1,24 @@
+# API keys for LLM agent trace collection
+# Copy this file to api_keys.yaml and fill in your keys.
+# NEVER commit api_keys.yaml to version control.
+
+models:
+  gpt-5.4:
+    api_key: "your-api-key-here"
+    base_url: "https://right.codes/codex/v1"
+    wire_api: "chat"
+
+  claude-sonnet:
+    api_key: "your-claude-key-here"
+    base_url: "https://api.anthropic.com/v1"
+    wire_api: "chat"
+
+  kimi-k2.5:
+    api_key: "your-kimi-key-here"
+    base_url: "https://api.moonshot.cn/v1"
+    wire_api: "chat"
+
+  qwen-72b:
+    api_key: "your-qwen-key-here"
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    wire_api: "chat"
