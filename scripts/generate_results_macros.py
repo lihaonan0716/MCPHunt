@@ -212,6 +212,8 @@ def main() -> None:
     cmd("twoByTwoCrossProd", fmt_pct(sum(is_unsafe(t) for t in rv1_risk), len(rv1_risk)))
     cmd("twoByTwoCrossPlac", fmt_pct(sum(is_unsafe(t) for t in hn1_risk), len(hn1_risk)))
     cmd("twoByTwoSurfN", str(len(rv1_hn)))
+    cmd("twoByTwoSurfProdN", str(len(rv1_hn)))
+    cmd("twoByTwoSurfPlacN", str(len(hn1_hn)))
     cmd("twoByTwoSurfProd", fmt_pct(sum(is_unsafe(t) for t in rv1_hn), len(rv1_hn)))
     cmd("twoByTwoSurfPlac", fmt_pct(sum(is_unsafe(t) for t in hn1_hn), len(hn1_hn)))
 
