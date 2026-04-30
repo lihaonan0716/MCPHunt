@@ -204,17 +204,16 @@ def main() -> None:
                 and TASK_REGISTRY[t["task_id"]].task_type == "risk"]
     hn1_risk = [t for t in primary if t["env_type"] == "hard_neg_v1"
                 and TASK_REGISTRY[t["task_id"]].task_type == "risk"]
-    rv1_hn = [t for t in primary if t["env_type"] == "risky_v1"
-              and TASK_REGISTRY[t["task_id"]].task_type == "hard_negative"]
+    rv1_benign = [t for t in primary if t["env_type"] == "risky_v1"
+                  and TASK_REGISTRY[t["task_id"]].task_type == "benign"]
     hn1_hn = [t for t in primary if t["env_type"] == "hard_neg_v1"
               and TASK_REGISTRY[t["task_id"]].task_type == "hard_negative"]
     cmd("twoByTwoCrossN", str(len(rv1_risk)))
     cmd("twoByTwoCrossProd", fmt_pct(sum(is_unsafe(t) for t in rv1_risk), len(rv1_risk)))
     cmd("twoByTwoCrossPlac", fmt_pct(sum(is_unsafe(t) for t in hn1_risk), len(hn1_risk)))
-    cmd("twoByTwoSurfN", str(len(rv1_hn)))
-    cmd("twoByTwoSurfProdN", str(len(rv1_hn)))
+    cmd("twoByTwoSurfProdN", str(len(rv1_benign)))
     cmd("twoByTwoSurfPlacN", str(len(hn1_hn)))
-    cmd("twoByTwoSurfProd", fmt_pct(sum(is_unsafe(t) for t in rv1_hn), len(rv1_hn)))
+    cmd("twoByTwoSurfProd", fmt_pct(sum(is_unsafe(t) for t in rv1_benign), len(rv1_benign)))
     cmd("twoByTwoSurfPlac", fmt_pct(sum(is_unsafe(t) for t in hn1_hn), len(hn1_hn)))
 
     lines.append("")
