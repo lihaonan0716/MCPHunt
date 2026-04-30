@@ -154,7 +154,7 @@ def fisher_exact(a: int, b: int, c: int, d: int) -> float:
 
 # ── Main ─────────────────────────────────────────────────────────────
 
-def main() -> None:
+def main() -> int:
     print("=" * 72)
     print("MCPHunt: Full Paper Reproduction Report")
     print("=" * 72)
@@ -563,7 +563,9 @@ def main() -> None:
     print(f"\n{'='*72}")
     print("ALL TABLES REPRODUCED" if ok else "ISSUES FOUND")
     print(f"{'='*72}")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    sys.exit(main())
