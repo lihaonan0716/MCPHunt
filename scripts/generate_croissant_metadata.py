@@ -26,7 +26,7 @@ DATASET_VERSION = "1.0.0"
 PUBLICATION_DATE = "2026-05-06"
 
 # TODO: Update after uploading to HuggingFace
-HF_DATASET_URL = "https://huggingface.co/datasets/lihaonan0716/mcphunt-agent-traces"
+HF_DATASET_URL = "<anonymous-dataset-url>"
 
 MAIN_MODELS = [
     "gpt_5_4", "gpt_5_2", "deepseek_v4_flash",
@@ -127,8 +127,8 @@ def build_metadata() -> Dict[str, Any]:
         "conformsTo": "http://mlcommons.org/croissant/1.0",
         "version": DATASET_VERSION,
         "license": "https://creativecommons.org/licenses/by/4.0/",
-        "creator": {"@type": "sc:Organization", "name": "Haonan Li"},
-        "publisher": {"@type": "sc:Organization", "name": "Haonan Li"},
+        "creator": {"@type": "sc:Organization", "name": "Anonymous"},
+        "publisher": {"@type": "sc:Organization", "name": "Anonymous"},
         "datePublished": PUBLICATION_DATE,
         "name": "MCPHunt Agent Traces",
         "description": (

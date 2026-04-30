@@ -51,7 +51,7 @@ Gemini-3.1-Pro, MiniMax-M2.7):
 
 Agent traces (3,615 main + 2,706 mitigation) are published on HuggingFace:
 
-> **[huggingface.co/datasets/lihaonan0716/mcphunt-agent-traces](https://huggingface.co/datasets/lihaonan0716/mcphunt-agent-traces)**
+> **\<anonymous-dataset-url\>**
 
 ## Quickstart (Reproduce Paper Results)
 

@@ -50,11 +50,11 @@
   "license": "https://creativecommons.org/licenses/by/4.0/",
   "creator": {
     "@type": "sc:Organization",
-    "name": "Haonan Li"
+    "name": "Anonymous"
   },
   "publisher": {
     "@type": "sc:Organization",
-    "name": "Haonan Li"
+    "name": "Anonymous"
   },
   "datePublished": "2026-05-06",
   "name": "MCPHunt Agent Traces",
@@ -70,7 +70,7 @@
     "benchmark",
     "evaluation"
   ],
-  "url": "https://huggingface.co/datasets/lihaonan0716/mcphunt-agent-traces",
+  "url": "<anonymous-dataset-url>",
   "citeAs": "@misc{mcphunt2026,\n  title = {MCPHunt: An Evaluation Framework for Cross-Boundary Data Propagation in Multi-Server MCP Agents},\n  author = {Anonymous},\n  year = {2026}\n}",
   "distribution": [
     {

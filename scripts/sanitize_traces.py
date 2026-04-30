@@ -43,11 +43,11 @@ _PYCHARM_REPLACEMENT = "projects"
 
 # Bare username in ls output, git log, file ownership, etc.
 # Use non-word-boundary-safe pattern to catch all occurrences
-_BARE_USERNAME_RE = re.compile(r"lihaonan")
+_BARE_USERNAME_RE = re.compile(r"<local-username>")
 _BARE_USERNAME_REPLACEMENT = "user"
 
 # Also catch variant spellings from model hallucinations
-_BARE_USERNAME_VARIANT_RE = re.compile(r"lihahaonan")
+_BARE_USERNAME_VARIANT_RE = re.compile(r"<local-username-typo>")
 
 
 def sanitize_text(raw: str) -> str:
@@ -103,7 +103,7 @@ def validate_sanitization(original: str, sanitized: str, filepath: str) -> list[
                 errors.append(f"trace[{i}].labeling.risk_signals changed")
 
     # 5. No sensitive strings remain
-    for pattern in ["lihaonan", "lihahaonan", "PyCharmProjects", "/Users/"]:
+    for pattern in ["<local-username>", "<local-username-typo>", "PyCharmProjects", "/Users/"]:
         if pattern in sanitized:
             errors.append(f"Residual sensitive string: '{pattern}'")
 

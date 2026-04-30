@@ -190,7 +190,7 @@ def main(skip_sanitize: bool = False) -> None:
     print(f"""
 1. pip install huggingface_hub
 2. huggingface-cli login
-3. huggingface-cli upload lihaonan0716/mcphunt-agent-traces \\
+3. huggingface-cli upload <anonymous-hf-repo>/mcphunt-agent-traces \\
      {HF_STAGING} . --repo-type dataset
 4. Update the dataset URL in scripts/download_traces.py
 """)
