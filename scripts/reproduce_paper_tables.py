@@ -484,7 +484,7 @@ def main() -> None:
 
     except ImportError as e:
         print(f"  ERROR: missing dependency: {e}")
-        print("  Install with: pip install -e '.[collect]'")
+        print("  Install with: pip install -e .")
         print("  Required packages: statsmodels, pandas, numpy, scipy")
         ok = False
 

@@ -29,7 +29,7 @@ relabel:
 	done
 	@echo "=== Done ==="
 
-## Reproduce every number in paper Tables 3-6 from raw traces
+## Reproduce all 16 paper tables (6 main + 10 appendix) from raw traces
 reproduce:
 	python3 scripts/reproduce_paper_tables.py
 
