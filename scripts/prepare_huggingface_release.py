@@ -91,11 +91,15 @@ signals), `events` (tool-call log), `task_completed`, `duration_s`, etc.
 ## Citation
 
 ```bibtex
-@misc{mcphunt2026,
+@article{mcphunt2026,
   title={MCPHunt: An Evaluation Framework for Cross-Boundary Data Propagation
          in Multi-Server MCP Agents},
-  author={Anonymous},
-  year={2026}
+  author={Li, Haonan and Sun, Tianjun and Wang, Yongqing and Zhang, Qisheng},
+  year={2026},
+  eprint={2604.27819},
+  archivePrefix={arXiv},
+  primaryClass={cs.CR},
+  url={https://arxiv.org/abs/2604.27819}
 }
 ```
 
