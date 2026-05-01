@@ -185,10 +185,14 @@ Every numeric value in the paper traces back through:
 ## Citation
 
 ```bibtex
-@misc{mcphunt2026,
+@article{mcphunt2026,
   title  = {MCPHunt: An Evaluation Framework for Cross-Boundary Data
             Propagation in Multi-Server MCP Agents},
-  author = {Anonymous},
-  year   = {2026}
+  author = {Li, Haonan and Sun, Tianjun and Wang, Yongqing and Zhang, Qisheng},
+  year   = {2026},
+  eprint = {2604.27819},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CR},
+  url    = {https://arxiv.org/abs/2604.27819}
 }
 ```

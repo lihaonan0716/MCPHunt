@@ -29,3 +29,7 @@ preferred-citation:
     - family-names: Zhang
       given-names: Qisheng
   year: 2026
+  identifiers:
+    - type: other
+      value: "arXiv:2604.27819"
+  url: "https://arxiv.org/abs/2604.27819"
