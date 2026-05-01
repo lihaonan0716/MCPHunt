@@ -26,7 +26,7 @@ DATASET_VERSION = "1.0.0"
 PUBLICATION_DATE = "2026-05-06"
 
 # TODO: Update after uploading to HuggingFace
-HF_DATASET_URL = "<anonymous-dataset-url>"
+HF_DATASET_URL = "https://huggingface.co/datasets/mcphunt-benchmark/mcphunt-agent-traces"
 
 MAIN_MODELS = [
     "gpt_5_4", "gpt_5_2", "deepseek_v4_flash",

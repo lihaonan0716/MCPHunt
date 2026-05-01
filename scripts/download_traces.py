@@ -21,7 +21,7 @@ RESULTS_DIR = REPO_ROOT / "results"
 
 # ── HuggingFace dataset coordinates ──────────────────────────────────
 # TODO: Update this after uploading to HuggingFace
-HF_REPO_ID = "<anonymous-hf-repo>/mcphunt-agent-traces"
+HF_REPO_ID = "mcphunt-benchmark/mcphunt-agent-traces"
 
 MAIN_MODELS = [
     "gpt_5_4",
