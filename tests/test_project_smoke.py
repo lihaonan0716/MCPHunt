@@ -199,7 +199,7 @@ class CanaryCrossContaminationTest(unittest.TestCase):
     """
 
     def _get_env_source(self) -> str:
-        return (REPO_ROOT / "src" / "mcphunt" / "environments.py").read_text()
+        return (REPO_ROOT / "src" / "mcphunt" / "environments.py").read_text(encoding="utf-8")
 
     def _get_risky_cores(self) -> set:
         from mcphunt.canary_registry import VARIANT_CANARIES

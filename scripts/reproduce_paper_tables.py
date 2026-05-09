@@ -76,13 +76,13 @@ MIT_LEVELS_CROSS = {
 def load_traces(path: Path) -> List[Dict]:
     """Load traces from a file or find the first trace JSON in a directory."""
     if path.is_file():
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         return data["traces"] if isinstance(data, dict) and "traces" in data else data
     if path.is_dir():
         for f in sorted(path.glob("agent_traces*.json")):
             if "collection_summary" in f.name:
                 continue
-            data = json.loads(f.read_text())
+            data = json.loads(f.read_text(encoding="utf-8"))
             return data["traces"] if isinstance(data, dict) and "traces" in data else data
     return []
 
@@ -201,15 +201,15 @@ def main() -> int:
         print(f"  {label:25s}  n={n:4d}  prop={pct(lk,n):>6s} {wilson(lk,n):>16s}  utility={pct(u,n):>6s}")
 
     # ================================================================
-    # TABLE 4 (tab:causal): 2×2 factorial
+    # TABLE 4 (tab:causal): 2x2 factorial
     # ================================================================
-    section("TABLE 4 (tab:causal): 2×2 factorial (GPT-5.4, v1)")
+    section("TABLE 4 (tab:causal): 2x2 factorial (GPT-5.4, v1)")
 
     for label, tid_set, env in [
-        ("Cross-boundary×Production", RISK_TASKS, "risky_v1"),
-        ("Cross-boundary×Placeholder", RISK_TASKS, "hard_neg_v1"),
-        ("Surface-level×Production", BENIGN_TASKS, "risky_v1"),
-        ("Surface-level×Placeholder", HN_TASKS, "hard_neg_v1"),
+        ("Cross-boundaryxProduction", RISK_TASKS, "risky_v1"),
+        ("Cross-boundaryxPlaceholder", RISK_TASKS, "hard_neg_v1"),
+        ("Surface-levelxProduction", BENIGN_TASKS, "risky_v1"),
+        ("Surface-levelxPlaceholder", HN_TASKS, "hard_neg_v1"),
     ]:
         sub = [t for t in gpt if t["task_id"] in tid_set and t["env_type"] == env]
         lk = sum(1 for t in sub if leaked(t))
@@ -296,7 +296,7 @@ def main() -> int:
     ctrl_traces = [t for t in gpt if t["env_type"] in ("benign", "hard_neg_v1", "hard_neg_v2", "hard_neg_v3")]
     ctrl_mechs = by_mechanism(ctrl_traces)
 
-    print(f"  {'Mechanism':25s} {'Risky':>7s} {'Control':>8s} {'Δ':>8s} {'p':>8s}")
+    print(f"  {'Mechanism':25s} {'Risky':>7s} {'Control':>8s} {'Delta':>8s} {'p':>8s}")
     for m in MECH_ORDER:
         r_sub = mechs.get(m, [])
         c_sub = ctrl_mechs.get(m, [])
@@ -364,9 +364,9 @@ def main() -> int:
               f"{pct(u,len(r)):>7s} {pct(pv,len(nc)):>7s} {pct(crs_lk,len(crs_sub)):>6s}")
 
     # ================================================================
-    # APPENDIX TABLE A8 (tab:multi_model_mechanism): Per-mechanism × model
+    # APPENDIX TABLE A8 (tab:multi_model_mechanism): Per-mechanism x model
     # ================================================================
-    section("APP TABLE A8 (tab:multi_model_mechanism): Per-mechanism × model (risky)")
+    section("APP TABLE A8 (tab:multi_model_mechanism): Per-mechanism x model (risky)")
 
     header = f"  {'Mechanism':25s}"
     for display in PAPER_MODELS.values():
@@ -386,7 +386,7 @@ def main() -> int:
         print(row)
 
     # ================================================================
-    # APPENDIX TABLE A9 (tab:multi_model_signals): Signal counts × model
+    # APPENDIX TABLE A9 (tab:multi_model_signals): Signal counts x model
     # ================================================================
     section("APP TABLE A9 (tab:multi_model_signals): Signal counts per model (risky)")
 
@@ -511,7 +511,7 @@ def main() -> int:
             delta = "---"
         else:
             delta = f"{rate - baseline_rate:+.1f}pp"
-        print(f"  {level_name:20s}  n={n:4d}  prop={pct(lk,n):>6s}  Δ={delta:>8s}  "
+        print(f"  {level_name:20s}  n={n:4d}  prop={pct(lk,n):>6s}  Delta={delta:>8s}  "
               f"utility={pct(u,n):>6s}  PV={pct(pv,len(nc)):>6s}")
 
     # ================================================================
@@ -548,17 +548,17 @@ def main() -> int:
             t1 = any(t["labeling"]["risk_signals"].get(s) for s in STRICT_LEAKAGE_SIGNALS)
             ar = t["labeling"]["any_risk"]
             if t1 != ar:
-                print(f"  ✗ MISMATCH: {slug}/{t['trace_id']}: tier1={t1}, any_risk={ar}")
+                print(f"  [FAIL] MISMATCH: {slug}/{t['trace_id']}: tier1={t1}, any_risk={ar}")
                 ok = False
-    print("  ✓ Tier-1 == any_risk for all risky traces") if ok else None
+    print("  [PASS] Tier-1 == any_risk for all risky traces") if ok else None
 
     benign_leaks = [f"{s}/{t['trace_id']}" for s, tr in all_traces.items()
                     for t in tr if t["env_type"] == "benign" and leaked(t)]
     if benign_leaks:
-        print(f"  ✗ BENIGN LEAKS: {benign_leaks}")
+        print(f"  [FAIL] BENIGN LEAKS: {benign_leaks}")
         ok = False
     else:
-        print("  ✓ Zero benign-environment leaks across all models")
+        print("  [PASS] Zero benign-environment leaks across all models")
 
     print(f"\n{'='*72}")
     print("ALL TABLES REPRODUCED" if ok else "ISSUES FOUND")

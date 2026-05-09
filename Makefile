@@ -2,7 +2,14 @@
 # Reviewer quickstart: make download && make reproduce
 # Full pipeline:       make test && make verify
 
-SHELL      := /bin/bash
+# Cross-platform shell and python detection
+ifeq ($(OS),Windows_NT)
+  PYTHON := python
+else
+  SHELL  := /bin/bash
+  PYTHON := python3
+endif
+
 PYTHONPATH := src
 export PYTHONPATH
 
@@ -14,28 +21,28 @@ TRACE_FILES := $(wildcard results/agent_traces/*/agent_traces.json)
 
 ## Run unit tests
 test:
-	python3 -m pytest tests/ -v
+	$(PYTHON) -m pytest tests/ -v
 
 ## Download traces from HuggingFace to results/
 download:
-	python3 scripts/download_traces.py
+	$(PYTHON) scripts/download_traces.py
 
 ## Recompute all risk signals from raw trace events
 relabel:
 	@echo "=== Relabeling $(words $(TRACE_FILES)) trace files ==="
 	@for f in $(TRACE_FILES); do \
 		echo "  relabel: $$f"; \
-		python3 scripts/relabel_traces.py "$$f"; \
+		$(PYTHON) scripts/relabel_traces.py "$$f"; \
 	done
 	@echo "=== Done ==="
 
 ## Reproduce all 16 paper tables (6 main + 10 appendix) from raw traces
 reproduce:
-	python3 scripts/reproduce_paper_tables.py
+	$(PYTHON) scripts/reproduce_paper_tables.py
 
 ## Sanitize traces for anonymous release
 sanitize:
-	python3 scripts/sanitize_traces.py --apply
+	$(PYTHON) scripts/sanitize_traces.py --apply
 
 ## Full pipeline: relabel + reproduce
 all: relabel reproduce

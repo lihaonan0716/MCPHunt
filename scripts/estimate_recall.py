@@ -157,7 +157,7 @@ def main() -> None:
     if api_keys_path.exists():
         try:
             import yaml
-            with open(api_keys_path) as f:
+            with open(api_keys_path, encoding="utf-8") as f:
                 judge_cfg = yaml.safe_load(f).get("models", {}).get(args.judge_model, {})
         except ImportError:
             pass

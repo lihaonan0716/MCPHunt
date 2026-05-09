@@ -76,7 +76,7 @@ def fmt_num(n: int) -> str:
 
 def load_traces(slug: str) -> List[Dict]:
     path = TRACES_DIR / slug / "agent_traces.json"
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     return data["traces"]
 
 
@@ -340,7 +340,7 @@ def main() -> None:
         for f in sorted(_glob.glob(str(MITIG_DIR / "*/agent_traces*.json"))):
             if "collection_summary" in f:
                 continue
-            total_mitig += len(json.loads(Path(f).read_text())["traces"])
+            total_mitig += len(json.loads(Path(f).read_text(encoding="utf-8"))["traces"])
 
         for mkey, minfo in MITIG_MODELS.items():
             mitig_model_count += 1
@@ -350,7 +350,7 @@ def main() -> None:
                               if "collection_summary" not in str(c)]
                 if not candidates:
                     continue
-                traces = json.loads(candidates[0].read_text())["traces"]
+                traces = json.loads(candidates[0].read_text(encoding="utf-8"))["traces"]
                 r = [t for t in traces if t["env_type"].startswith("risky")]
                 n = len(r)
                 k = sum(is_unsafe(t) for t in r)
@@ -384,7 +384,7 @@ def main() -> None:
     lines.append(f"% Generated from {total_main} main + {total_mitig} mitigation traces")
 
     # Write
-    OUT.write_text("\n".join(lines) + "\n")
+    OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Wrote {len(lines)} lines to {OUT}")
     print(f"  Main traces: {total_main}")
     print(f"  Mitigation traces: {total_mitig}")
