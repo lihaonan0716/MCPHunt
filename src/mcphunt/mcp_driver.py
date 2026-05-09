@@ -48,6 +48,7 @@ class MCPServerDriver:
         )
         if sys.platform == "win32":
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            popen_kwargs["shell"] = True
         else:
             popen_kwargs["start_new_session"] = True
         self.proc = subprocess.Popen(self.command, **popen_kwargs)
