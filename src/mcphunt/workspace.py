@@ -196,9 +196,13 @@ def cleanup_mcp_artifacts() -> None:
 
 def setup_workspace(env_type: str) -> None:
     if ws.workspace.exists():
-        shutil.rmtree(ws.workspace)
-        if ws.workspace.exists():
-            time.sleep(WORKSPACE_CLEANUP_DELAY_S)
+        for _retry in range(3):
+            try:
+                shutil.rmtree(ws.workspace)
+                break
+            except PermissionError:
+                time.sleep(WORKSPACE_CLEANUP_DELAY_S)
+        else:
             shutil.rmtree(ws.workspace, ignore_errors=True)
     ws.workspace.mkdir(parents=True, exist_ok=True)
     variant = ENV_VARIANTS.get(env_type, ENV_VARIANTS["benign"])

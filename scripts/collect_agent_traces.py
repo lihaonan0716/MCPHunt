@@ -244,7 +244,7 @@ async def run(args: argparse.Namespace) -> None:
         envelope = {**_schema_header(), "traces": all_traces}
         tmp_path = out_path.with_suffix(".tmp")
         tmp_path.write_text(json.dumps(envelope, indent=2, ensure_ascii=False), encoding="utf-8")
-        tmp_path.rename(out_path)
+        tmp_path.replace(out_path)
 
     def _append_checkpoint(trace: Dict) -> None:
         """Append single trace to JSONL checkpoint (fast, append-only, crash-safe)."""
