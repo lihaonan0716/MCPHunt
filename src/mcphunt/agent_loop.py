@@ -57,11 +57,11 @@ def load_model_config(model_name: str) -> Dict[str, str]:
         return {}
     try:
         import yaml
-        with open(API_KEYS_PATH) as f:
+        with open(API_KEYS_PATH, encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
         return cfg.get("models", {}).get(model_name, {})
     except ImportError:
-        text = API_KEYS_PATH.read_text()
+        text = API_KEYS_PATH.read_text(encoding="utf-8")
         result = {}
         in_model = False
         for line in text.split("\n"):

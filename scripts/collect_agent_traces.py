@@ -121,7 +121,7 @@ async def run(args: argparse.Namespace) -> None:
             str(cred_path),
             scopes=["https://www.googleapis.com/auth/cloud-platform"],
         )
-        cred_info = json.loads(cred_path.read_text())
+        cred_info = json.loads(cred_path.read_text(encoding="utf-8"))
         project_id = cred_info.get("project_id", "")
         client = AnthropicVertex(project_id=project_id, region=region, credentials=credentials)
         log.info("Vertex AI: project=%s, region=%s", project_id, region)

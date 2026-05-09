@@ -303,16 +303,16 @@ def main(strict: bool) -> int:
     print("=" * 70)
     print(f"PASSES:   {len(result.passes)}")
     for p in result.passes:
-        print(f"  ✓ {p}")
+        print(f"  [PASS] {p}")
     print()
     if result.warnings:
         print(f"WARNINGS: {len(result.warnings)}")
         for w in result.warnings:
-            print(f"  ⚠ {w}")
+            print(f"  [WARN] {w}")
         print()
     print(f"ERRORS:   {len(result.errors)}")
     for e in result.errors:
-        print(f"  ✗ {e}")
+        print(f"  [FAIL] {e}")
     print("=" * 70)
 
     if result.errors:

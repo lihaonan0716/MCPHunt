@@ -42,11 +42,15 @@ class MCPServerDriver:
 
     async def start(self) -> None:
         merged_env = {**_sanitized_env(), **self.env}
-        self.proc = subprocess.Popen(
-            self.command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        popen_kwargs: dict = dict(
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, env=merged_env, cwd=self.cwd,
-            start_new_session=True,
         )
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            popen_kwargs["start_new_session"] = True
+        self.proc = subprocess.Popen(self.command, **popen_kwargs)
         await self._initialize()
 
     async def _initialize(self) -> None:
@@ -138,19 +142,25 @@ class MCPServerDriver:
 
     async def stop(self) -> None:
         if self.proc:
-            try:
-                pgid = os.getpgid(self.proc.pid)
-                os.killpg(pgid, signal.SIGTERM)
-            except (ProcessLookupError, PermissionError, OSError):
+            if sys.platform == "win32":
                 self.proc.terminate()
+            else:
+                try:
+                    pgid = os.getpgid(self.proc.pid)
+                    os.killpg(pgid, signal.SIGTERM)
+                except (ProcessLookupError, PermissionError, OSError):
+                    self.proc.terminate()
             try:
                 self.proc.wait(timeout=PROCESS_STOP_TIMEOUT_S)
             except subprocess.TimeoutExpired:
-                try:
-                    pgid = os.getpgid(self.proc.pid)
-                    os.killpg(pgid, signal.SIGKILL)
-                except (ProcessLookupError, PermissionError, OSError):
+                if sys.platform == "win32":
                     self.proc.kill()
+                else:
+                    try:
+                        pgid = os.getpgid(self.proc.pid)
+                        os.killpg(pgid, signal.SIGKILL)
+                    except (ProcessLookupError, PermissionError, OSError):
+                        self.proc.kill()
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +168,44 @@ class MCPServerDriver:
 # ---------------------------------------------------------------------------
 
 _http_server_proc: Optional[subprocess.Popen] = None
+
+
+def _kill_processes_on_port(port: int) -> None:
+    """Kill any process occupying the given port (cross-platform)."""
+    pids: list[str] = []
+    try:
+        if sys.platform == "win32":
+            result = subprocess.run(
+                ["netstat", "-ano", "-p", "TCP"],
+                capture_output=True, text=True, timeout=PROCESS_STOP_TIMEOUT_S,
+            )
+            for line in result.stdout.splitlines():
+                if f":{port} " in line or f":{port}\t" in line:
+                    parts = line.split()
+                    if parts and parts[-1].isdigit():
+                        pids.append(parts[-1])
+        else:
+            result = subprocess.run(
+                ["lsof", "-ti", f":{port}"],
+                capture_output=True, text=True, timeout=PROCESS_STOP_TIMEOUT_S,
+            )
+            pids = [p for p in result.stdout.strip().split() if p.isdigit()]
+    except (OSError, subprocess.SubprocessError):
+        return
+    for pid in set(pids):
+        try:
+            if sys.platform == "win32":
+                subprocess.run(
+                    ["taskkill", "/F", "/PID", pid],
+                    capture_output=True, timeout=PROCESS_STOP_TIMEOUT_S,
+                )
+            else:
+                os.kill(int(pid), 9)
+            log.info("Killed stale process %s on port %s", pid, port)
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if pids:
+        time.sleep(HTTP_SERVER_START_DELAY_S)
 
 
 def _start_local_http_server() -> None:
@@ -173,18 +221,7 @@ def _start_local_http_server() -> None:
     _stop_local_http_server()
     port = workspace.ws.local_http_port
     web_dir = workspace.ws.web_dir
-    # Kill any stale process occupying our port (from previous runs)
-    try:
-        result = subprocess.run(["lsof", "-ti", f":{port}"],
-                                capture_output=True, text=True, timeout=PROCESS_STOP_TIMEOUT_S)
-        for pid in result.stdout.strip().split():
-            if pid.isdigit():
-                os.kill(int(pid), 9)
-                log.info("Killed stale process %s on port %s", pid, port)
-        if result.stdout.strip():
-            time.sleep(HTTP_SERVER_START_DELAY_S)
-    except (OSError, subprocess.SubprocessError):
-        pass
+    _kill_processes_on_port(port)
     web_dir.mkdir(parents=True, exist_ok=True)
     _http_server_proc = subprocess.Popen(
         [sys.executable, "-m", "http.server", str(port), "--directory", str(web_dir)],

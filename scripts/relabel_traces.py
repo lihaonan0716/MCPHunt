@@ -118,7 +118,7 @@ def main() -> None:
     path.write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
 
     log.info("Changed: %d/%d traces", changed, len(traces))
-    log.info("Unsafe: %d → %d", old_unsafe, new_unsafe)
+    log.info("Unsafe: %d -> %d", old_unsafe, new_unsafe)
 
     for env in sorted(set(t.get("env_type", "") for t in traces)):
         et = [t for t in traces if t["env_type"] == env]
