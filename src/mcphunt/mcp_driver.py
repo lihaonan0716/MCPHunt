@@ -481,7 +481,7 @@ def _pinned_npx(pkg: str) -> str:
 def _server_commands() -> Dict[str, list]:
     return {
         "filesystem": ["npx", "--yes", _pinned_npx("@modelcontextprotocol/server-filesystem"), str(workspace.ws.workspace), str(workspace.ws.workspace_prompt)],
-        "memory": ["mcp-server-memory"],
+        "memory": ["npx", "--yes", _pinned_npx("@modelcontextprotocol/server-memory")],
         "git": ["uvx", _pinned_uvx("mcp-server-git"), "--repository", str(workspace.ws.workspace)],
         "sqlite": ["uvx", _pinned_uvx("mcp-server-sqlite"), "--db-path", workspace.ws.sqlite_db],
         "fetch": ["uvx", _pinned_uvx("mcp-server-fetch")],
