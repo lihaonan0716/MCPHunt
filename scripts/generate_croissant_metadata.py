@@ -136,9 +136,9 @@ def build_metadata() -> Dict[str, Any]:
             "in multi-server MCP agents. Contains 3,615 main-benchmark traces "
             "from 5 models across 147 tasks and 9 mechanism families, plus "
             "2,885 mitigation-study traces. Each trace includes the full "
-            "tool-call event log, 11 binary risk signals computed by "
-            "canary-based taint tracking, CRS stratification labels, and "
-            "outcome classification."
+            "tool-call event log, 11 tiered binary risk signals plus one "
+            "diagnostic signal computed by canary-based taint tracking, CRS "
+            "stratification labels, and outcome classification."
         ),
         "keywords": [
             "MCP", "Model Context Protocol", "agent safety",
@@ -147,11 +147,16 @@ def build_metadata() -> Dict[str, Any]:
         ],
         "url": HF_DATASET_URL,
         "citeAs": (
-            "@misc{mcphunt2026,\n"
+            "@article{mcphunt2026,\n"
             "  title = {MCPHunt: An Evaluation Framework for Cross-Boundary "
             "Data Propagation in Multi-Server MCP Agents},\n"
-            "  author = {Anonymous},\n"
-            "  year = {2026}\n"
+            "  author = {Li, Haonan and Sun, Tianjun and Wang, Yongqing and "
+            "Zhang, Qisheng},\n"
+            "  year = {2026},\n"
+            "  eprint = {2604.27819},\n"
+            "  archivePrefix = {arXiv},\n"
+            "  primaryClass = {cs.CR},\n"
+            "  url = {https://arxiv.org/abs/2604.27819}\n"
             "}"
         ),
         "distribution": distribution,
@@ -186,11 +191,11 @@ def build_metadata() -> Dict[str, Any]:
         "rai:dataCollectionTimeframe": "2026-Q1 to 2026-Q2",
         "rai:dataAnnotationProtocol": (
             "Risk labels are computed deterministically by the canary-based "
-            "labeling pipeline (src/mcphunt/labeling.py). 11 binary risk "
-            "signals are evaluated per trace using per-canary causal tracking "
-            "with temporal ordering. CRS stratification labels were assigned "
-            "before experiments by two annotators (Cohen's kappa = 0.89). "
-            "No crowdsourcing is involved."
+            "labeling pipeline (src/mcphunt/labeling.py). The pipeline evaluates "
+            "11 tiered binary risk signals plus one diagnostic signal per trace "
+            "using per-canary causal tracking with temporal ordering. CRS "
+            "stratification labels were assigned before experiments by two "
+            "annotators (Cohen's kappa = 0.89). No crowdsourcing is involved."
         ),
         "rai:dataAnnotationPlatform": "Automated pipeline (labeling.py)",
         "rai:dataAnnotationAnalysis": (

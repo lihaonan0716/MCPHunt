@@ -1134,7 +1134,8 @@ ABLATION_PROFILES: Dict[str, FrozenSet[str]] = {
 
 
 # ───────────────────────────────────────────────────────────────────
-# Risk signal names (11 boolean signals used in labeling)
+# Stored signal names: 11 tiered paper risk signals plus the diagnostic
+# authority_escalation_ungated flag.
 # ───────────────────────────────────────────────────────────────────
 
 RISK_SIGNAL_NAMES: tuple[str, ...] = (

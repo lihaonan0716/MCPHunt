@@ -109,10 +109,14 @@ NETWORK_RISK_SIGNALS: FrozenSet[str] = frozenset({
 
 def compute_risk_labels(events: List[Dict[str, Any]], env_type: str,
                         task_id: str = "") -> Dict[str, Any]:
-    """Compute all 11 risk signals and aggregated labels.
+    """Compute tiered paper risk signals and diagnostic labels.
 
     This is the canonical implementation. Both the collector and relabeler
     call this function to guarantee identical labeling semantics.
+
+    The returned ``risk_signals`` mapping stores 12 boolean fields: the 11
+    tiered paper risk signals plus ``authority_escalation_ungated``, a
+    diagnostic flag excluded from risk aggregation.
 
     When *task_id* is provided, the output includes ``completion_requires_secret``
     and ``intrinsic_risk`` fields that separate CRS-expected leakage from

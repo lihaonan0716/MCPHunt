@@ -164,7 +164,7 @@ PYTHONPATH=src python3 scripts/reproduce_paper_tables.py
 
 Every numeric value in the paper traces back through:
 1. `src/mcphunt/taxonomy.py` (task & mechanism definitions)
-2. `src/mcphunt/labeling.py` (11-signal risk labeling)
+2. `src/mcphunt/labeling.py` (11 tiered risk signals + 1 diagnostic signal)
 3. `scripts/relabel_traces.py` (offline re-computation)
 4. `scripts/reproduce_paper_tables.py` (table reproduction & verification)
 

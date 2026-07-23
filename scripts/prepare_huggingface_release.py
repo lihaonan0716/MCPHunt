@@ -85,8 +85,9 @@ make reproduce   # reproduces every number in the paper
 ## Schema
 
 Each trace JSON file contains a top-level `traces` array. Per-trace fields:
-`task_id`, `env_type`, `risk_mechanism`, `outcome`, `labeling` (with 11 risk
-signals), `events` (tool-call log), `task_completed`, `duration_s`, etc.
+`task_id`, `env_type`, `risk_mechanism`, `outcome`, `labeling` (with 11 tiered
+risk signals plus 1 diagnostic signal), `events` (tool-call log),
+`task_completed`, `duration_s`, etc.
 
 ## Citation
 

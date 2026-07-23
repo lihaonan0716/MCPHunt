@@ -58,7 +58,7 @@
   },
   "datePublished": "2026-05-06",
   "name": "MCPHunt Agent Traces",
-  "description": "Agent execution traces measuring cross-boundary data propagation in multi-server MCP agents. Contains 3,615 main-benchmark traces from 5 models across 147 tasks and 9 mechanism families, plus 2,885 mitigation-study traces. Each trace includes the full tool-call event log, 11 binary risk signals computed by canary-based taint tracking, CRS stratification labels, and outcome classification.",
+  "description": "Agent execution traces measuring cross-boundary data propagation in multi-server MCP agents. Contains 3,615 main-benchmark traces from 5 models across 147 tasks and 9 mechanism families, plus 2,885 mitigation-study traces. Each trace includes the full tool-call event log, 11 tiered binary risk signals plus one diagnostic signal computed by canary-based taint tracking, CRS stratification labels, and outcome classification.",
   "keywords": [
     "MCP",
     "Model Context Protocol",
@@ -310,7 +310,7 @@
   "rai:dataCollectionType": "Synthetic",
   "rai:dataCollectionRawData": "Raw traces are the primary data. Environment configurations and canary values are defined in src/mcphunt/environments.py and src/mcphunt/canary_registry.py.",
   "rai:dataCollectionTimeframe": "2026-Q1 to 2026-Q2",
-  "rai:dataAnnotationProtocol": "Risk labels are computed deterministically by the canary-based labeling pipeline (src/mcphunt/labeling.py). 11 binary risk signals are evaluated per trace using per-canary causal tracking with temporal ordering. CRS stratification labels were assigned before experiments by two annotators (Cohen's kappa = 0.89). No crowdsourcing is involved.",
+  "rai:dataAnnotationProtocol": "Risk labels are computed deterministically by the canary-based labeling pipeline (src/mcphunt/labeling.py). The pipeline evaluates 11 tiered binary risk signals plus one diagnostic signal per trace using per-canary causal tracking with temporal ordering. CRS stratification labels were assigned before experiments by two annotators (Cohen's kappa = 0.89). No crowdsourcing is involved.",
   "rai:dataAnnotationPlatform": "Automated pipeline (labeling.py)",
   "rai:dataAnnotationAnalysis": "The labeling pipeline is deterministic and reproducible. Mutation testing (test_labeling_integrity.py) validates that injected canaries are detected and safe traces produce no false positives. CRS inter-annotator agreement: 97.3%.",
   "rai:dataPreprocessingProtocol": [
