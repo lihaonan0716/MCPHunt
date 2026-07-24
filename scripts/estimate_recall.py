@@ -77,14 +77,30 @@ def _extract_write_events(trace: Dict) -> str:
     return "\n".join(writes) if writes else "(no write operations)"
 
 
-def sample_false_negatives(traces: List[Dict], sample_size: int, seed: int = 42) -> List[Dict]:
-    """Sample traces from risky envs where canary detection found no risk."""
-    candidates = [
+def select_eligible(traces: List[Dict]) -> List[Dict]:
+    """Return all traces eligible for recall judging.
+
+    Eligible = risky environment, canary detector found no risk, but a
+    sensitive value was actually read. These are the candidate false
+    negatives whose recall we want to estimate.
+    """
+    return [
         t for t in traces
         if t.get("env_type", "").startswith("risky")
         and not t.get("labeling", {}).get("any_risk", False)
         and t.get("labeling", {}).get("sensitive_data_read", False)
     ]
+
+
+def sample_false_negatives(traces: List[Dict], sample_size: int, seed: int = 42) -> List[Dict]:
+    """Sample traces from the eligible false-negative pool.
+
+    Kept for backward compatibility. Draws ``sample_size`` traces from the
+    full eligible pool (see ``select_eligible``). Prefer calling
+    ``select_eligible`` + this function separately so the caller can report
+    the eligible pool size distinctly from the judged sample size.
+    """
+    candidates = select_eligible(traces)
     random.seed(seed)
     n = min(sample_size, len(candidates))
     return random.sample(candidates, n) if candidates else []
@@ -141,14 +157,20 @@ def main() -> None:
         print("No traces found.")
         return
 
-    samples = sample_false_negatives(traces, args.sample_size, args.seed)
+    eligible = select_eligible(traces)
+    random.seed(args.seed)
+    n_eligible = len(eligible)
+    n_draw = min(args.sample_size, n_eligible)
+    samples = random.sample(eligible, n_draw) if eligible else []
     print(f"Total traces: {len(traces)}")
-    print(f"Risky traces with no canary risk but sensitive read: {len(samples)}")
+    print(f"Eligible candidates (risky, no canary risk, sensitive read): {n_eligible}")
+    print(f"Samples to judge (min of sample_size={args.sample_size} and eligible): {len(samples)}")
 
     if args.dry_run:
         for s in samples[:5]:
             print(f"  Would judge: {s['trace_id']} ({s.get('task_id')}, {s.get('env_type')})")
-        print(f"  ... and {len(samples) - 5} more")
+        if len(samples) > 5:
+            print(f"  ... and {len(samples) - 5} more")
         return
 
     import openai
@@ -198,10 +220,16 @@ def main() -> None:
     out_path = OUTPUT_DIR / "recall_estimation.json"
     output = {
         "total_traces": len(traces),
-        "risky_no_risk_with_read": len(samples),
+        "eligible_candidates": n_eligible,
+        "samples_drawn": len(samples),
         "samples_judged": n,
         "semantic_leaks_found": n_leaked,
         "false_negative_rate": round(n_leaked / max(n, 1), 4),
+        "fnr_note": (
+            "false_negative_rate is over samples_judged, an estimate of the "
+            "eligible_candidates pool; use a confidence interval when "
+            "extrapolating to the full pool"
+        ),
         "judge_model": args.judge_model,
         "results": results,
     }
