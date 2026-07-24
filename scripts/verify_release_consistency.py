@@ -158,7 +158,7 @@ def check_relabel(result: CheckResult) -> None:
             sample = candidate
             break
     if sample is None:
-        result.warn("cannot test relabel — no trace files found")
+        result.warn("cannot test relabel - no trace files found")
         return
 
     cmd = [sys.executable, "scripts/relabel_traces.py", str(sample)]
@@ -250,6 +250,62 @@ def check_huggingface_staging(result: CheckResult) -> None:
             result.passed(f"HF staging directory: {subdir}/ ({sum(1 for _ in path.glob('*'))} files)")
         else:
             result.warn(f"HF staging directory empty or missing: {subdir}/")
+
+    # Cross-consistency: staging croissant must match the release
+    # source-of-truth on descriptive/provenance fields. Only fields that are
+    # intentionally anonymized for the HF review copy are exempt.
+    _check_staging_matches_release(result, staging)
+
+
+# Fields intentionally allowed to differ between release and HF staging
+# croissant (the staging copy is anonymized for double-blind dataset review).
+_STAGING_EXEMPT_KEYS = frozenset({"citeAs"})
+
+
+def _staging_sync_keys(rel: dict, stg: dict) -> list:
+    """Fields that MUST stay in sync: descriptive text plus every top-level
+    RAI provenance field present in either croissant, minus the exempt
+    (anonymized) keys. Built dynamically so a newly added rai:* field is
+    covered automatically instead of silently escaping a hardcoded list."""
+    keys = {"description"} | {
+        key for key in (rel.keys() | stg.keys()) if key.startswith("rai:")
+    }
+    return sorted(keys - _STAGING_EXEMPT_KEYS)
+
+
+def _check_staging_matches_release(result: CheckResult, staging: Path) -> None:
+    release_path = REPO_ROOT / "artifacts" / "release" / "croissant.json"
+    staging_path = staging / "croissant.json"
+    if not (release_path.exists() and staging_path.exists()):
+        return  # presence already reported above
+    try:
+        rel = json.loads(release_path.read_text(encoding="utf-8"))
+        stg = json.loads(staging_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 - report, don't crash the suite
+        result.error(f"croissant staging/release not parseable: {exc}")
+        return
+    sync_keys = _staging_sync_keys(rel, stg)
+    rai_count = sum(1 for key in sync_keys if key.startswith("rai:"))
+    drift = []
+    for key in sync_keys:
+        r, s = rel.get(key), stg.get(key)
+        if r is None and s is None:
+            continue
+        if r != s:
+            drift.append(key)
+    if drift:
+        result.error(
+            "HF staging croissant drifted from release on "
+            f"{drift}; re-run scripts/prepare_huggingface_release.py "
+            "(or sync those fields). Exempt (anonymized) keys: "
+            f"{sorted(_STAGING_EXEMPT_KEYS)}"
+        )
+    else:
+        result.passed(
+            "HF staging croissant matches release on descriptive/RAI fields "
+            f"(checked {len(sync_keys)} fields including {rai_count} RAI "
+            f"fields; exempt: {sorted(_STAGING_EXEMPT_KEYS)})"
+        )
 
 
 # ── Check 8: No stale naming ─────────────────────────────────────
