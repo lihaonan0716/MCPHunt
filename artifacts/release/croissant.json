@@ -310,9 +310,9 @@
   "rai:dataCollectionType": "Synthetic",
   "rai:dataCollectionRawData": "Raw traces are the primary data. Environment configurations and canary values are defined in src/mcphunt/environments.py and src/mcphunt/canary_registry.py.",
   "rai:dataCollectionTimeframe": "2026-Q1 to 2026-Q2",
-  "rai:dataAnnotationProtocol": "Risk labels are computed deterministically by the canary-based labeling pipeline (src/mcphunt/labeling.py). The pipeline evaluates 11 tiered binary risk signals plus one diagnostic signal per trace using per-canary causal tracking with temporal ordering. CRS stratification labels were assigned before experiments by two annotators (Cohen's kappa = 0.89). No crowdsourcing is involved.",
+  "rai:dataAnnotationProtocol": "Risk labels are computed deterministically by the canary-based labeling pipeline (src/mcphunt/labeling.py). The pipeline evaluates 11 tiered binary risk signals plus one diagnostic signal per trace using per-canary causal tracking with temporal ordering. CRS stratification labels are frozen task metadata assigned during task construction using a fixed rubric and encoded as completion_requires_secret in src/mcphunt/taxonomy.py, frozen before experiments. No independent human annotation or crowdsourcing was performed.",
   "rai:dataAnnotationPlatform": "Automated pipeline (labeling.py)",
-  "rai:dataAnnotationAnalysis": "The labeling pipeline is deterministic and reproducible. Mutation testing (test_labeling_integrity.py) validates that injected canaries are detected and safe traces produce no false positives. CRS inter-annotator agreement: 97.3%.",
+  "rai:dataAnnotationAnalysis": "The labeling pipeline is deterministic and reproducible. Mutation testing (test_labeling_integrity.py) validates that injected canaries are detected and safe traces produce no false positives. CRS labels are reproducible from the frozen task registry and the published rubric; no inter-annotator reliability study applies (labels are assigned by construction, not by independent human annotation).",
   "rai:dataPreprocessingProtocol": [
     "Traces are sanitized to remove local usernames and paths (sanitize_traces.py).",
     "Risk signals are recomputed offline to ensure label consistency (relabel_traces.py).",

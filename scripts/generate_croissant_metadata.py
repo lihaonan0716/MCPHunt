@@ -194,15 +194,21 @@ def build_metadata() -> Dict[str, Any]:
             "labeling pipeline (src/mcphunt/labeling.py). The pipeline evaluates "
             "11 tiered binary risk signals plus one diagnostic signal per trace "
             "using per-canary causal tracking with temporal ordering. CRS "
-            "stratification labels were assigned before experiments by two "
-            "annotators (Cohen's kappa = 0.89). No crowdsourcing is involved."
+            "stratification labels are frozen task metadata assigned "
+            "during task construction using a fixed rubric and encoded as "
+            "completion_requires_secret in src/mcphunt/taxonomy.py, frozen "
+            "before experiments. No independent human annotation or "
+            "crowdsourcing was performed."
         ),
         "rai:dataAnnotationPlatform": "Automated pipeline (labeling.py)",
         "rai:dataAnnotationAnalysis": (
             "The labeling pipeline is deterministic and reproducible. "
             "Mutation testing (test_labeling_integrity.py) validates that "
             "injected canaries are detected and safe traces produce no "
-            "false positives. CRS inter-annotator agreement: 97.3%."
+            "false positives. CRS labels are reproducible from the frozen "
+            "task registry and the published rubric; no inter-annotator "
+            "reliability study applies (labels are assigned by construction, "
+            "not by independent human annotation)."
         ),
         "rai:dataPreprocessingProtocol": [
             "Traces are sanitized to remove local usernames and paths (sanitize_traces.py).",
