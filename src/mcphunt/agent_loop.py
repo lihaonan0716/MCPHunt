@@ -10,9 +10,10 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
-import openai
+if TYPE_CHECKING:
+    import openai  # type-only: the live client is injected by the collector
 
 from mcphunt import workspace
 from mcphunt.config import (

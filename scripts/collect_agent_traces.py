@@ -29,8 +29,6 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-import openai
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
@@ -109,7 +107,12 @@ async def run(args: argparse.Namespace) -> None:
     wire = getattr(args, "wire_api", "chat")
     model_cfg = load_model_config(api_model)
 
-    if wire == "vertex":
+    client = None
+    if args.dry_run:
+        # dry-run is local inspection only: never build a provider client or
+        # require any live SDK (openai / anthropic-vertex).
+        pass
+    elif wire == "vertex":
         cred_path = workspace.REPO_ROOT / "configs" / "claude_credentials.json"
         if not cred_path.exists():
             log.error("Vertex credentials not found at %s", cred_path)
@@ -134,6 +137,7 @@ async def run(args: argparse.Namespace) -> None:
         if not api_key:
             log.error("No API key for model '%s'. Set in configs/api_keys.yaml, --api-key flag, or OPENAI_API_KEY env var.", api_model)
             return
+        import openai  # lazy: dry-run needs no SDK (mirrors vertex/anthropic lazy import)
         client = openai.OpenAI(api_key=api_key, base_url=api_base)
 
     suite = getattr(args, "suite", "base")
