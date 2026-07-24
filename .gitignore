@@ -71,3 +71,6 @@ AGENTS.md
 CLAUDE.md
 .claude/
 .drawio/
+
+# Dev-local documentation store (strategy notes, rebuttal drafts, AI-only docs)
+docs/
