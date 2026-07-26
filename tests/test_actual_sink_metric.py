@@ -550,7 +550,7 @@ class CliPrinterRegressionTest(unittest.TestCase):
         orig_output = self.em.OUTPUT_DIR
         orig_argv = sys.argv
         with tempfile.TemporaryDirectory() as td:
-            self.em.load_all_traces = lambda model=None: list(combined)
+            self.em.load_all_traces = lambda model=None, agent_traces_only=False: list(combined)
             self.em.OUTPUT_DIR = Path(td)
             sys.argv = ["evaluate_mitigation.py", "--all-models"]
             try:
@@ -581,6 +581,190 @@ class CliPrinterRegressionTest(unittest.TestCase):
         self.assertEqual(landed["live_guard"]["n_defense"], len(defe),
                         "landed live_guard must still include the defense arm")
         self.assertEqual(landed["live_guard"]["n_baseline"], len(base))
+
+        # Boundary #2: default (flag-off) schema is frozen. The landed JSON must
+        # keep the legacy top-level key ORDER, with live_guard appended last.
+        self.assertEqual(
+            list(landed.keys()),
+            ["overall", "per_mechanism", "per_model", "over_refusal",
+             "per_signal", "pareto_points", "live_guard"],
+            f"default flag-off schema/order must not drift; got {list(landed.keys())}")
+
+    def test_agent_traces_only_writes_scoped_live_guard_artifact(self):
+        # --agent-traces-only --out <tmp> must land a SCOPED artifact: top-level
+        # keys are exactly {input_scope, model, source_dirs, live_guard}, with no
+        # legacy report blocks, and the live_guard arms stay balanced.
+        import io
+        import contextlib
+        import json
+        import tempfile
+        from pathlib import Path
+
+        base = [dict(t, defense="none") for t in self._risky_traces()]       # 4
+        defe = [dict(t, defense="taint_tracking",
+                     events=[_write(VALUE, blocked=True,
+                                    sanitized="<REDACTED:taint_blocked>")],
+                     taint_tracker_stats={"writes_blocked": 1})
+                for t in self._risky_traces()]                                # 4
+        combined = base + defe
+
+        orig_load = self.em.load_all_traces
+        orig_output = self.em.OUTPUT_DIR
+        orig_argv = sys.argv
+        with tempfile.TemporaryDirectory() as td:
+            out_path = Path(td) / "sub" / "scoped.json"
+            canonical = Path(td) / "mitigation_results.json"
+            # OUTPUT_DIR points at a NON-existent sibling: if the code wrongly
+            # ran OUTPUT_DIR.mkdir() (instead of only out_path.parent), this dir
+            # would spring into existence. --out must never touch it.
+            shared_dir = Path(td) / "shared_output_dir"
+            self.em.load_all_traces = lambda model=None, agent_traces_only=False: list(combined)
+            self.em.OUTPUT_DIR = shared_dir
+            sys.argv = ["evaluate_mitigation.py", "--all-models",
+                        "--agent-traces-only", "--out", str(out_path)]
+            try:
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    self.em.main()
+                landed = json.loads(out_path.read_text(encoding="utf-8"))
+                shared_touched = shared_dir.exists()
+            finally:
+                self.em.load_all_traces = orig_load
+                self.em.OUTPUT_DIR = orig_output
+                sys.argv = orig_argv
+
+        self.assertEqual(set(landed.keys()),
+                         {"input_scope", "model", "source_dirs", "live_guard"},
+                         f"scoped artifact must carry only provenance + live_guard; got {sorted(landed)}")
+        self.assertEqual(landed["input_scope"], "agent_traces_only")
+        self.assertEqual(landed["source_dirs"], ["results/agent_traces"])
+        self.assertEqual(landed["live_guard"]["n_baseline"], len(base))
+        self.assertEqual(landed["live_guard"]["n_defense"], len(defe))
+        # The canonical file must NOT be touched when --out redirects elsewhere.
+        self.assertFalse(canonical.exists(),
+                         "isolated --out run must not write the canonical mitigation_results.json")
+        # --out must not create/touch the shared OUTPUT_DIR at all.
+        self.assertFalse(shared_touched,
+                         "--out run must not create the shared OUTPUT_DIR")
+
+    def test_agent_traces_only_without_out_errors_and_writes_nothing(self):
+        # --agent-traces-only WITHOUT --out must exit via parser.error (SystemExit)
+        # and never write the canonical mitigation_results.json.
+        import io
+        import contextlib
+        import tempfile
+        from pathlib import Path
+
+        combined = [dict(t, defense="none") for t in self._risky_traces()]
+
+        orig_load = self.em.load_all_traces
+        orig_output = self.em.OUTPUT_DIR
+        orig_argv = sys.argv
+        with tempfile.TemporaryDirectory() as td:
+            canonical = Path(td) / "mitigation_results.json"
+            self.em.load_all_traces = lambda model=None, agent_traces_only=False: list(combined)
+            self.em.OUTPUT_DIR = Path(td)
+            sys.argv = ["evaluate_mitigation.py", "--all-models", "--agent-traces-only"]
+            try:
+                with contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit):
+                        self.em.main()
+            finally:
+                self.em.load_all_traces = orig_load
+                self.em.OUTPUT_DIR = orig_output
+                sys.argv = orig_argv
+        self.assertFalse(canonical.exists(),
+                         "parser.error path must not write the canonical mitigation_results.json")
+
+    def test_agent_traces_only_load_skips_mitigation_dir_in_fallback(self):
+        # Exercise the REAL checkpoint fallback path (not the primary load):
+        # write baseline + mitigation checkpoint JSONL files, force the primary
+        # loader to return empty for both dirs so load_all_traces drops into the
+        # fallback loop, then assert isolated mode reads ONLY the baseline dir's
+        # checkpoint while default reads both.
+        import json
+        import tempfile
+        from pathlib import Path
+
+        import mcphunt.datasets.agent_traces as at_mod
+
+        def _write_ckpt(root, sub, tag):
+            d = root / sub
+            d.mkdir(parents=True, exist_ok=True)
+            # Row must carry a non-empty events list to survive the fallback
+            # filter, and a distinct trace_id to survive dedup.
+            row = {"trace_id": f"{tag}-1", "src": tag,
+                   "events": [{"tool": "write_file", "args": {"content": "x"}}]}
+            (d / "agent_traces.checkpoint.jsonl").write_text(
+                json.dumps(row) + "\n", encoding="utf-8")
+
+        orig_loader = at_mod.load_agent_traces
+        orig_baseline = self.em.BASELINE_TRACES_DIR
+        orig_mit = self.em.MITIGATION_TRACES_DIR
+        with tempfile.TemporaryDirectory() as tb, tempfile.TemporaryDirectory() as tm:
+            base_root = Path(tb)
+            mit_root = Path(tm)
+            _write_ckpt(base_root, "modelA", "baseline")
+            _write_ckpt(mit_root, "modelA_m1", "mitigation")
+
+            # Primary load must return empty for BOTH dirs so we reach the
+            # checkpoint fallback. The fallback loop itself scans the filesystem
+            # directly and does not go through this loader.
+            def empty_primary(traces_dir=None, model=None):
+                return []
+
+            try:
+                at_mod.load_agent_traces = empty_primary
+                self.em.BASELINE_TRACES_DIR = base_root
+                self.em.MITIGATION_TRACES_DIR = mit_root
+                isolated = self.em.load_all_traces(agent_traces_only=True)
+                combined = self.em.load_all_traces(agent_traces_only=False)
+            finally:
+                at_mod.load_agent_traces = orig_loader
+                self.em.BASELINE_TRACES_DIR = orig_baseline
+                self.em.MITIGATION_TRACES_DIR = orig_mit
+
+        iso_srcs = {r.get("src") for r in isolated}
+        comb_srcs = {r.get("src") for r in combined}
+        self.assertEqual(iso_srcs, {"baseline"},
+                         f"isolated fallback must read only the baseline dir; got {iso_srcs}")
+        self.assertEqual(comb_srcs, {"baseline", "mitigation"},
+                         f"default fallback must read both dirs; got {comb_srcs}")
+
+    def test_agent_traces_only_with_export_csv_errors_and_writes_no_csv(self):
+        # --agent-traces-only + --export-csv is a mutually-exclusive combination
+        # (a partial M0-only Pareto CSV would land on the shared, --out-ungoverned
+        # OUTPUT_DIR path). It must exit via parser.error and write no CSV.
+        import io
+        import contextlib
+        import tempfile
+        from pathlib import Path
+
+        combined = [dict(t, defense="none") for t in self._risky_traces()]
+
+        orig_load = self.em.load_all_traces
+        orig_output = self.em.OUTPUT_DIR
+        orig_argv = sys.argv
+        with tempfile.TemporaryDirectory() as td:
+            shared_dir = Path(td) / "shared_output_dir"
+            csv_path = shared_dir / "pareto_frontier.csv"
+            out_path = Path(td) / "scoped.json"
+            self.em.load_all_traces = lambda model=None, agent_traces_only=False: list(combined)
+            self.em.OUTPUT_DIR = shared_dir
+            sys.argv = ["evaluate_mitigation.py", "--all-models",
+                        "--agent-traces-only", "--export-csv", "--out", str(out_path)]
+            try:
+                with contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit):
+                        self.em.main()
+            finally:
+                self.em.load_all_traces = orig_load
+                self.em.OUTPUT_DIR = orig_output
+                sys.argv = orig_argv
+        self.assertFalse(csv_path.exists(),
+                         "mutually-exclusive combo must not write pareto_frontier.csv")
+        self.assertFalse(shared_dir.exists(),
+                         "parser.error path must not create the shared OUTPUT_DIR")
 
     def test_legacy_surface_excludes_active_defense_traces(self):
         # Contamination regression: active-defense traces also carry

@@ -58,12 +58,18 @@ LEVEL_ORDER = ["none", "generic", "moderate", "detailed"]
 # Data loading
 # ---------------------------------------------------------------------------
 
-def load_all_traces(model: Optional[str] = None) -> List[Dict]:
+def load_all_traces(model: Optional[str] = None,
+                    agent_traces_only: bool = False) -> List[Dict]:
     """Load baseline (M0) + mitigation (M1-M3) traces from separate directories.
 
     Baseline traces are loaded from results/agent_traces/ (the main experiment).
     Mitigation traces are loaded from results/mitigation_traces/ (separate runs).
     This separation ensures mitigation experiments never contaminate baseline data.
+
+    When *agent_traces_only* is set, only results/agent_traces/ is read; the
+    mitigation directory is skipped in BOTH the primary load and the checkpoint
+    fallback, so the M0 mitigation-sweep arm cannot re-enter the baseline via
+    the fallback path. Default (flag off) loads both directories as before.
     """
     from mcphunt.datasets.agent_traces import load_agent_traces
 
@@ -73,8 +79,8 @@ def load_all_traces(model: Optional[str] = None) -> List[Dict]:
     baseline = load_agent_traces(traces_dir=BASELINE_TRACES_DIR, model=model)
     all_traces.extend(baseline)
 
-    # Load M1-M3 from mitigation experiment directory
-    if MITIGATION_TRACES_DIR.exists():
+    # Load M1-M3 from mitigation experiment directory (skipped when isolated)
+    if not agent_traces_only and MITIGATION_TRACES_DIR.exists():
         mitigation = load_agent_traces(traces_dir=MITIGATION_TRACES_DIR, model=model)
         all_traces.extend(mitigation)
 
@@ -82,8 +88,10 @@ def load_all_traces(model: Optional[str] = None) -> List[Dict]:
         return all_traces
 
     # Fallback: load from checkpoint JSONL when final JSON hasn't been written yet
+    fallback_dirs = ([BASELINE_TRACES_DIR] if agent_traces_only
+                     else [BASELINE_TRACES_DIR, MITIGATION_TRACES_DIR])
     fallback: List[Dict] = []
-    for traces_dir in [BASELINE_TRACES_DIR, MITIGATION_TRACES_DIR]:
+    for traces_dir in fallback_dirs:
         if not traces_dir.exists():
             continue
         dirs = [traces_dir / model] if model else sorted(traces_dir.iterdir())
@@ -862,13 +870,35 @@ def main() -> None:
     parser.add_argument("--model", default="", help="Evaluate a specific model")
     parser.add_argument("--all-models", action="store_true", help="Evaluate all models")
     parser.add_argument("--export-csv", action="store_true", help="Export Pareto data as CSV")
+    parser.add_argument("--agent-traces-only", action="store_true",
+                        help="Load only results/agent_traces/ (skip the mitigation "
+                             "sweep dir); emits a scoped live_guard-only artifact. "
+                             "Requires --out.")
+    parser.add_argument("--out", default="",
+                        help="Write the result JSON to this path instead of the "
+                             "canonical results/mitigation_analysis/mitigation_results.json")
     args = parser.parse_args()
+
+    # Release-chain safety: the isolated live_guard-only artifact has a different
+    # schema from the canonical full mitigation_results.json (consumed as a
+    # complete result by the release chain). Never let it default-overwrite that
+    # canonical file.
+    if args.agent_traces_only and not args.out:
+        parser.error("--agent-traces-only requires --out <path> "
+                     "(scoped live_guard artifact must not overwrite the "
+                     "canonical mitigation_results.json)")
+    # The isolated mode emits only the scoped live_guard JSON; a partial
+    # (M0-only) Pareto CSV would still write to the shared, --out-ungoverned
+    # OUTPUT_DIR / pareto_frontier.csv, so forbid the combination.
+    if args.agent_traces_only and args.export_csv:
+        parser.error("--agent-traces-only cannot be combined with --export-csv "
+                     "(isolated mode emits the scoped live_guard JSON only)")
 
     model = args.model if args.model else None
     if args.all_models:
         model = None
 
-    traces = load_all_traces(model=model)
+    traces = load_all_traces(model=model, agent_traces_only=args.agent_traces_only)
     if not traces:
         print("No traces found.")
         return
@@ -929,23 +959,40 @@ def main() -> None:
     live_guard = live_guard_comparison(traces)
     print_live_guard(live_guard)
 
-    # Save results
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    result = {
-        "overall": overall,
-        "per_mechanism": mechanism,
-        "per_model": model_data,
-        "over_refusal": refusal,
-        "per_signal": signals,
-        "pareto_points": pareto,
-    }
-    if live_guard is not None:
-        result["live_guard"] = live_guard
-    out_path = OUTPUT_DIR / "mitigation_results.json"
+    # Assemble the result dict. In isolated mode the artifact is scoped to
+    # live_guard + provenance only (a different schema from the canonical full
+    # report), so a partial M1-M3 report can never be misread.
+    if args.agent_traces_only:
+        result: Dict = {
+            "input_scope": "agent_traces_only",
+            "model": model if model else "all",
+            "source_dirs": ["results/agent_traces"],
+        }
+        if live_guard is not None:
+            result["live_guard"] = live_guard
+    else:
+        result = {
+            "overall": overall,
+            "per_mechanism": mechanism,
+            "per_model": model_data,
+            "over_refusal": refusal,
+            "per_signal": signals,
+            "pareto_points": pareto,
+        }
+        if live_guard is not None:
+            result["live_guard"] = live_guard
+
+    # Resolve the output path first, then create only its parent dir -- an
+    # --out elsewhere must not touch/create the shared results/mitigation_analysis/.
+    out_path = Path(args.out) if args.out else OUTPUT_DIR / "mitigation_results.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"\nSaved to {out_path}")
 
     if args.export_csv and pareto:
+        # Pareto CSV is a legacy side-output on the shared OUTPUT_DIR path
+        # (not governed by --out); create the dir only when actually exporting.
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         csv_path = OUTPUT_DIR / "pareto_frontier.csv"
         with open(csv_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=pareto[0].keys())
