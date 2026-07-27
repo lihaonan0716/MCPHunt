@@ -77,6 +77,23 @@ def _extract_write_events(trace: Dict) -> str:
     return "\n".join(writes) if writes else "(no write operations)"
 
 
+def is_no_defense(trace: Dict[str, Any]) -> bool:
+    """True for a no-defense (M0) trace.
+
+    Mirrors the canonical predicate in ``scripts/evaluate_mitigation.py``
+    (``is_no_defense``): the collector writes ``defense="none"`` as a string,
+    so missing / empty / ``"none"`` (case-insensitive, whitespace-stripped)
+    all count as no-defense; any other value ("taint_tracking", ...) is an
+    active defense. Recall estimation is a property of the main (no-defense)
+    benchmark arm, so active-defense traces (e.g. the live-guard ``_deft``
+    files) are excluded by default -- otherwise the shared trace loader,
+    which globs ``agent_traces*.json``, would inflate the eligible pool with
+    defense-arm traces and contaminate the recall-ceiling estimate.
+    """
+    d = trace.get("defense")
+    return d is None or str(d).strip().lower() in ("", "none")
+
+
 def select_eligible(traces: List[Dict]) -> List[Dict]:
     """Return all traces eligible for recall judging.
 
@@ -150,12 +167,28 @@ def main() -> None:
     parser.add_argument("--judge-api-key", default="")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--include-defense",
+        action="store_true",
+        help="Also count active-defense (e.g. taint_tracking) traces. Off by "
+             "default: recall is a property of the main no-defense benchmark "
+             "arm, and the shared loader globs agent_traces*.json (including "
+             "live-guard _deft files), which would otherwise inflate the pool.",
+    )
     args = parser.parse_args()
 
     traces = load_agent_traces(traces_dir=TRACES_DIR)
     if not traces:
         print("No traces found.")
         return
+
+    n_loaded = len(traces)
+    if not args.include_defense:
+        traces = [t for t in traces if is_no_defense(t)]
+        n_defense_excluded = n_loaded - len(traces)
+        if n_defense_excluded:
+            print(f"Excluded {n_defense_excluded} active-defense trace(s) "
+                  f"(pass --include-defense to keep them)")
 
     eligible = select_eligible(traces)
     random.seed(args.seed)
