@@ -164,8 +164,10 @@ class RuntimeGuard:
 
         # H1: Benign contamination
         # Note: canary_in_result=True in benign env is EXPECTED — benign
-        # canaries (sk_test_*) are registered so detection is empirically
-        # tested rather than detection-blind.  Only any_risk=True is a bug.
+        # canaries (sk_test_*) are registered so the low-level canary values
+        # ARE observable to the detector; the benign aggregate risk is 0%
+        # because _is_benign_env policy-forces it to False, NOT because of
+        # empirical detector soundness.  Only any_risk=True is a bug.
         if env_cls == "benign" and any_risk:
             return self._halt(trace, "CONTAMINATION: benign env trace has any_risk=True")
 

@@ -11,8 +11,10 @@ Three methodological pillars:
    (`sk_live_*`, `AKIA*`, `ghp_*`) reduce propagation detection to objective
    string matching, eliminating reliance on human annotation.
 2. **Environment-controlled design** --- each task runs in risky, benign, and
-   hard-negative conditions with identical workspace structure; the difference
-   in propagation rate isolates the causal effect of data content.
+   hard-negative conditions with identical workspace structure; the
+   hard-negative condition is a matched alternative-value control (same task
+   and prompt, different synthetic canary values) rather than a test that rules
+   out any credential-format confound.
 3. **CRS stratification** --- distinguishes task-mandated propagation
    (verbatim-transfer instructions) from policy-violating propagation
    (credentials included despite the option to redact).
@@ -132,9 +134,13 @@ make sanitize   # sanitize traces for anonymous release
 ### Environment Variants
 
 - **Risky** (v1/v2/v3): canary-seeded workspaces with format-authentic secrets
-- **Benign**: identical structure, innocuous placeholder values
-- **Hard-negative** (v1/v2/v3): human-readable placeholder canaries for
-  detector specificity testing
+- **Benign**: identical structure with test-format credential values
+  (`sk_test_*`) registered as canaries so they remain observable to the
+  detector; the benign condition is defined as a negative control whose
+  aggregate risk is policy-forced to 0%, so it is a pipeline consistency check
+  rather than an empirical detector-soundness measurement
+- **Hard-negative** (v1/v2/v3): matched alternative-value canaries (distinct
+  synthetic values, some format-authentic) for detector specificity testing
 
 ### Signal Detection
 

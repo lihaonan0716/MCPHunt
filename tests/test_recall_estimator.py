@@ -1,16 +1,19 @@
-"""Unit tests for the P2 recall-estimation Stage-2 plumbing.
+"""Unit tests for the P2 detector-clean miss-prevalence Stage-2 plumbing.
 
 These are pure-logic tests over synthetic traces and small integer fixtures --
 they never read a trace file, never call a judge, and incur no cost. They pin
 the frozen rules documented in ``docs/p2_recall_plan.md`` (rev 2):
 
 * the no-defense arm filter (``is_no_defense``) that keeps live-guard defense
-  traces out of the main-benchmark recall pool,
+  traces out of the main-benchmark detector-clean pool,
 * the judge evidence window == the labeler's full outbound channel union
   (so the two never silently drift apart),
-* proportional ``model x risk_mechanism`` allocation: largest-remainder
-  rounding, thin-cell census, deterministic tie-break, uncovered-cell reporting,
-* the pooled Wilson 95% score interval (frozen primary interval).
+* seeded pooled SRS over the stable detector-clean frame, plus diagnostic-only
+  realized ``model x risk_mechanism`` coverage reporting,
+* the pooled Wilson 95% score interval (frozen conservative primary interval)
+  over the behavioral ``detector_clean_miss_prevalence`` estimand -- NOT a
+  recall / false-negative-rate framing, and the missingness band + per-run
+  output contract from decision 3.
 """
 from __future__ import annotations
 
@@ -104,11 +107,24 @@ class TestJudgeEvidenceWindow(unittest.TestCase):
         self.assertEqual(n_trunc, 0)
 
     def test_extract_evidence_counts_truncation(self):
+        # Truncation is off by default (EVENT_ARG_TRUNCATION_CHARS == 0); the
+        # capping behavior is still available when a positive limit is passed.
+        cap = 2000
         big = {"turn": 1, "server": "fs", "tool": "write_file",
-               "args": {"content": "x" * (ER.EVENT_ARG_TRUNCATION_CHARS + 100)}}
-        text, n_trunc = ER.extract_evidence_events(_trace(tool_events=[big]))
+               "args": {"content": "x" * (cap + 100)}}
+        text, n_trunc = ER.extract_evidence_events(
+            _trace(tool_events=[big]), truncation_chars=cap)
         self.assertEqual(n_trunc, 1)
         self.assertIn("(truncated)", text)
+
+    def test_extract_evidence_no_truncation_by_default(self):
+        # With the default (0), even very large args pass through untruncated.
+        self.assertEqual(ER.EVENT_ARG_TRUNCATION_CHARS, 0)
+        big = {"turn": 1, "server": "fs", "tool": "write_file",
+               "args": {"content": "x" * 10000}}
+        text, n_trunc = ER.extract_evidence_events(_trace(tool_events=[big]))
+        self.assertEqual(n_trunc, 0)
+        self.assertNotIn("(truncated)", text)
 
     def test_extract_evidence_empty(self):
         text, n_trunc = ER.extract_evidence_events(_trace(tool_events=[]))
@@ -144,54 +160,70 @@ class TestWilsonInterval(unittest.TestCase):
         self.assertGreaterEqual(hi, 7 / 40)
 
 
-class TestProportionalAllocation(unittest.TestCase):
-    def test_sum_equals_sample_size_when_below_pool(self):
-        pool = {("a", "x"): 100, ("a", "y"): 100, ("b", "x"): 100}
-        alloc = ER.allocate_proportional(pool, 60)
-        self.assertEqual(sum(alloc.values()), 60)
+class TestSRSSampler(unittest.TestCase):
+    """Frozen estimand (decision 3, E-B): seeded without-replacement pooled SRS.
 
-    def test_proportional_split_even(self):
-        pool = {("a", "x"): 100, ("a", "y"): 100, ("b", "x"): 100}
-        alloc = ER.allocate_proportional(pool, 60)
-        self.assertEqual(alloc[("a", "x")], 20)
-        self.assertEqual(alloc[("a", "y")], 20)
-        self.assertEqual(alloc[("b", "x")], 20)
+    NOT a proportional stratified allocation. Per-cell coverage is an outcome,
+    never balanced, gated, or re-drawn.
+    """
 
-    def test_largest_remainder_deterministic(self):
-        # Three equal cells, N=10 -> ideal 3.33 each; largest remainder gives
-        # the extra draw to the lexicographically first cell (tie-break).
-        pool = {("a", "x"): 10, ("a", "y"): 10, ("a", "z"): 10}
-        alloc = ER.allocate_proportional(pool, 10)
-        self.assertEqual(sum(alloc.values()), 10)
-        self.assertEqual(alloc[("a", "x")], 4)
-        self.assertEqual(alloc[("a", "y")], 3)
-        self.assertEqual(alloc[("a", "z")], 3)
+    def _pool(self):
+        traces = []
+        for i in range(40):
+            traces.append(_trace(model="a", mech="x", tid=f"ax{i:03d}"))
+        for i in range(60):
+            traces.append(_trace(model="a", mech="y", tid=f"ay{i:03d}"))
+        return traces
 
-    def test_thin_cell_census_caps_at_pool(self):
-        # A tiny cell cannot receive more than its pool; freed draws go to the
-        # rest. N=50, tiny cell has only 2 traces.
-        pool = {("a", "x"): 2, ("a", "y"): 500}
-        alloc = ER.allocate_proportional(pool, 50)
-        self.assertLessEqual(alloc[("a", "x")], 2)
-        self.assertEqual(sum(alloc.values()), 50)
+    def test_deterministic_given_seed(self):
+        pool = self._pool()
+        s1 = ER.sample_srs(pool, 20, seed=42)
+        s2 = ER.sample_srs(pool, 20, seed=42)
+        self.assertEqual([t["trace_id"] for t in s1], [t["trace_id"] for t in s2])
 
-    def test_census_when_sample_exceeds_pool(self):
-        pool = {("a", "x"): 10, ("a", "y"): 20}
-        alloc = ER.allocate_proportional(pool, 1000)
-        self.assertEqual(alloc[("a", "x")], 10)
-        self.assertEqual(alloc[("a", "y")], 20)
+    def test_sample_size_respected(self):
+        s = ER.sample_srs(self._pool(), 20, seed=42)
+        self.assertEqual(len(s), 20)
 
-    def test_empty_pool_returns_zeros(self):
-        alloc = ER.allocate_proportional({}, 50)
-        self.assertEqual(alloc, {})
+    def test_without_replacement_no_duplicates(self):
+        s = ER.sample_srs(self._pool(), 50, seed=42)
+        ids = [t["trace_id"] for t in s]
+        self.assertEqual(len(ids), len(set(ids)))
 
-    def test_zero_sample_size(self):
-        pool = {("a", "x"): 10}
-        alloc = ER.allocate_proportional(pool, 0)
-        self.assertEqual(alloc[("a", "x")], 0)
+    def test_census_when_sample_meets_or_exceeds_pool(self):
+        pool = self._pool()
+        s = ER.sample_srs(pool, 1000, seed=42)
+        self.assertEqual(len(s), len(pool))
+        self.assertEqual({t["trace_id"] for t in s},
+                         {t["trace_id"] for t in pool})
+
+    def test_frame_is_stable_sorted_independent_of_input_order(self):
+        pool = self._pool()
+        import random as _r
+        shuffled = list(pool)
+        _r.Random(7).shuffle(shuffled)
+        f1 = ER.sampling_frame(pool)
+        f2 = ER.sampling_frame(shuffled)
+        self.assertEqual([t["trace_id"] for t in f1],
+                         [t["trace_id"] for t in f2])
+
+    def test_frame_hash_stable_and_order_independent(self):
+        pool = self._pool()
+        import random as _r
+        shuffled = list(pool)
+        _r.Random(9).shuffle(shuffled)
+        self.assertEqual(ER.sampling_frame_hash(ER.sampling_frame(pool)),
+                         ER.sampling_frame_hash(ER.sampling_frame(shuffled)))
+
+    def test_frame_hash_changes_when_pool_changes(self):
+        pool = self._pool()
+        h1 = ER.sampling_frame_hash(ER.sampling_frame(pool))
+        pool2 = pool + [_trace(model="a", mech="x", tid="ax999")]
+        h2 = ER.sampling_frame_hash(ER.sampling_frame(pool2))
+        self.assertNotEqual(h1, h2)
 
 
-class TestAllocationReport(unittest.TestCase):
+class TestRealizedCoverage(unittest.TestCase):
     def _pool(self):
         traces = []
         for i in range(3):
@@ -200,54 +232,27 @@ class TestAllocationReport(unittest.TestCase):
             traces.append(_trace(model="a", mech="y", tid=f"ay{i}"))
         return traces
 
-    def test_uncovered_cells_reported_not_dropped(self):
-        report = ER.build_allocation_report(self._pool(), 5)
+    def test_coverage_is_diagnostic_only_flag(self):
+        pool = self._pool()
+        sample = ER.sample_srs(pool, 5, seed=42)
+        report = ER.realized_coverage(pool, sample)
+        self.assertTrue(report["coverage_is_diagnostic_only"])
+        self.assertEqual(report["design"], "pooled_srs_without_replacement")
+
+    def test_totals_and_uncovered_reported(self):
+        pool = self._pool()
+        sample = ER.sample_srs(pool, 5, seed=42)
+        report = ER.realized_coverage(pool, sample)
+        self.assertEqual(report["total_pool"], 33)
+        self.assertEqual(report["total_drawn"], 5)
         cells = {(c["model"], c["risk_mechanism"]): c for c in report["cells"]}
-        # Both cells appear in the table even if one gets 0 draws.
         self.assertIn(("a", "x"), cells)
         self.assertIn(("a", "y"), cells)
-        uncovered = {(u["model"], u["risk_mechanism"]) for u in report["uncovered_cells"]}
+        uncovered = {(u["model"], u["risk_mechanism"])
+                     for u in report["uncovered_cells"]}
         for cell in cells.values():
-            if cell["allocated"] == 0:
+            if cell["drawn"] == 0:
                 self.assertIn((cell["model"], cell["risk_mechanism"]), uncovered)
-
-    def test_totals(self):
-        report = ER.build_allocation_report(self._pool(), 5)
-        self.assertEqual(report["total_pool"], 33)
-        self.assertEqual(report["total_allocated"], 5)
-
-
-class TestStratifiedSampling(unittest.TestCase):
-    def _pool(self):
-        traces = []
-        for i in range(40):
-            traces.append(_trace(model="a", mech="x", tid=f"ax{i}"))
-        for i in range(60):
-            traces.append(_trace(model="a", mech="y", tid=f"ay{i}"))
-        return traces
-
-    def test_deterministic_given_seed(self):
-        pool = self._pool()
-        s1 = ER.sample_stratified(pool, 20, seed=42)
-        s2 = ER.sample_stratified(pool, 20, seed=42)
-        self.assertEqual([t["trace_id"] for t in s1], [t["trace_id"] for t in s2])
-
-    def test_sample_size_respected(self):
-        pool = self._pool()
-        s = ER.sample_stratified(pool, 20, seed=42)
-        self.assertEqual(len(s), 20)
-
-    def test_draws_from_declared_cells(self):
-        pool = self._pool()
-        alloc = ER.allocate_proportional(
-            {("a", "x"): 40, ("a", "y"): 60}, 20)
-        s = ER.sample_stratified(pool, 20, seed=42)
-        got = {}
-        for t in s:
-            k = (t["model"], t["risk_mechanism"])
-            got[k] = got.get(k, 0) + 1
-        self.assertEqual(got.get(("a", "x"), 0), alloc[("a", "x")])
-        self.assertEqual(got.get(("a", "y"), 0), alloc[("a", "y")])
 
 
 class _FakeMessage:
@@ -462,34 +467,28 @@ class TestTruncationStrata(unittest.TestCase):
         s = ER.compute_truncation_strata(self._valid())
         self.assertEqual(s["truncated"]["n"] + s["non_truncated"]["n"], 4)
 
-    def test_leaks_and_fnr_per_stratum(self):
+    def test_misses_and_prevalence_per_stratum(self):
         s = ER.compute_truncation_strata(self._valid())
         self.assertEqual(s["truncated"]["n"], 2)
-        self.assertEqual(s["truncated"]["leaks"], 1)
-        self.assertEqual(s["truncated"]["false_negative_rate"], 0.5)
+        self.assertEqual(s["truncated"]["misses"], 1)
+        self.assertEqual(s["truncated"]["detector_clean_miss_prevalence"], 0.5)
         self.assertEqual(s["non_truncated"]["n"], 2)
-        self.assertEqual(s["non_truncated"]["leaks"], 0)
-        self.assertEqual(s["non_truncated"]["false_negative_rate"], 0.0)
-
-    def test_recall_is_one_minus_fnr(self):
-        s = ER.compute_truncation_strata(self._valid())
-        self.assertEqual(s["non_truncated"]["recall"], 1.0)
-        self.assertEqual(s["truncated"]["recall"], 0.5)
+        self.assertEqual(s["non_truncated"]["misses"], 0)
+        self.assertEqual(s["non_truncated"]["detector_clean_miss_prevalence"], 0.0)
 
     def test_ci_fields_are_pairs(self):
         s = ER.compute_truncation_strata(self._valid())
         for name in ("truncated", "non_truncated"):
-            self.assertEqual(len(s[name]["false_negative_rate_ci95"]), 2)
-            self.assertEqual(len(s[name]["recall_ci95"]), 2)
+            self.assertEqual(
+                len(s[name]["detector_clean_miss_prevalence_ci95"]), 2)
 
-    def test_empty_stratum_is_unavailable_not_perfect_recall(self):
-        # An empty stratum must NOT report recall=1.0 / fnr=0.0 -- that would
-        # assert perfect recall from zero observations.
+    def test_empty_stratum_is_unavailable_not_spurious_zero(self):
+        # An empty stratum must NOT report prevalence=0.0 -- that would assert a
+        # perfectly clean detector from zero observations.
         s = ER.compute_truncation_strata(
             [{"evidence_truncated": False, "leaked": False}])
         self.assertEqual(s["truncated"]["n"], 0)
-        self.assertIsNone(s["truncated"]["false_negative_rate"])
-        self.assertIsNone(s["truncated"]["recall"])
+        self.assertIsNone(s["truncated"]["detector_clean_miss_prevalence"])
 
 
 class TestCensusStatus(unittest.TestCase):
@@ -548,13 +547,25 @@ class TestJudgeSampleWithRetry(unittest.TestCase):
             self.assertIn(key, r)
 
     def test_truncation_flag_propagates_to_result(self):
+        cap = 2000
         big = {"turn": 1, "server": "fs", "tool": "write_file",
-               "args": {"content": "x" * (ER.EVENT_ARG_TRUNCATION_CHARS + 50)}}
+               "args": {"content": "x" * (cap + 50)}}
+        samples = [_trace(tid="a", tool_events=[big])]
+        client = _SeqClient([VALID_JSON])
+        results, _ = ER.judge_sample_with_retry(
+            samples, client, "m", truncation_chars=cap)
+        self.assertTrue(results[0]["evidence_truncated"])
+        self.assertEqual(results[0]["n_truncated_events"], 1)
+
+    def test_no_truncation_flag_by_default(self):
+        # Default run (truncation off) must not flag even huge evidence.
+        big = {"turn": 1, "server": "fs", "tool": "write_file",
+               "args": {"content": "x" * 10000}}
         samples = [_trace(tid="a", tool_events=[big])]
         client = _SeqClient([VALID_JSON])
         results, _ = ER.judge_sample_with_retry(samples, client, "m")
-        self.assertTrue(results[0]["evidence_truncated"])
-        self.assertEqual(results[0]["n_truncated_events"], 1)
+        self.assertFalse(results[0]["evidence_truncated"])
+        self.assertEqual(results[0]["n_truncated_events"], 0)
 
     def test_retry_recovers_invalid_then_valid(self):
         samples = [_trace(tid="a")]
@@ -595,26 +606,74 @@ class TestJudgeSampleWithRetry(unittest.TestCase):
         self.assertEqual(audit["retried_trace_ids"], ["b"])
 
 
-class TestPooledFnrRecall(unittest.TestCase):
-    def test_zero_valid_gives_none_not_perfect_recall(self):
-        # HIGH: n == 0 (all invalid) must not report FNR=0 / recall=1.
-        m = ER.compute_pooled_fnr_recall(0, 0)
-        self.assertIsNone(m["false_negative_rate"])
-        self.assertIsNone(m["recall"])
+class TestPooledMissPrevalence(unittest.TestCase):
+    def test_zero_valid_gives_none_not_spurious_clean(self):
+        # HIGH: n == 0 (all invalid) must not report prevalence=0 (a spuriously
+        # clean detector from zero observations).
+        m = ER.compute_pooled_miss_prevalence(0, 0)
+        self.assertIsNone(m["detector_clean_miss_prevalence"])
         # No-information Wilson interval is still reported honestly.
-        self.assertEqual(m["false_negative_rate_ci95"], [0.0, 1.0])
-        self.assertEqual(m["recall_ci95"], [0.0, 1.0])
+        self.assertEqual(m["detector_clean_miss_prevalence_ci95"], [0.0, 1.0])
 
     def test_normal_point_estimate(self):
-        m = ER.compute_pooled_fnr_recall(2, 8)
-        self.assertEqual(m["false_negative_rate"], 0.25)
-        self.assertEqual(m["recall"], 0.75)
+        m = ER.compute_pooled_miss_prevalence(2, 8)
+        self.assertEqual(m["detector_clean_miss_prevalence"], 0.25)
 
-    def test_zero_leaks_nonzero_n_is_a_real_zero(self):
-        # n > 0 with 0 leaks IS a legitimate FNR=0 estimate (not None).
-        m = ER.compute_pooled_fnr_recall(0, 10)
-        self.assertEqual(m["false_negative_rate"], 0.0)
-        self.assertEqual(m["recall"], 1.0)
+    def test_zero_misses_nonzero_n_is_a_real_zero(self):
+        # n > 0 with 0 misses IS a legitimate 0.0 prevalence estimate (not None).
+        m = ER.compute_pooled_miss_prevalence(0, 10)
+        self.assertEqual(m["detector_clean_miss_prevalence"], 0.0)
+
+    def test_hypergeometric_sensitivity_field_when_pool_given(self):
+        # A finite-population pool adds the exact hypergeometric sensitivity band.
+        m = ER.compute_pooled_miss_prevalence(2, 8, pool_size=100)
+        self.assertIn("detector_clean_miss_prevalence_hypergeom95", m)
+        self.assertEqual(len(m["detector_clean_miss_prevalence_hypergeom95"]), 2)
+
+    def test_renamed_symbol_fails_loudly(self):
+        # The old FNR/recall entry point must not silently return numbers.
+        with self.assertRaises(NotImplementedError):
+            ER.compute_pooled_fnr_recall(2, 8)
+
+
+class TestMissingnessBounds(unittest.TestCase):
+    """Invalid-judgment contract (decision 3): band over the full n."""
+
+    def test_m_zero_band_is_degenerate(self):
+        # No permanent invalids -> optimistic == pessimistic, single interval.
+        b = ER.compute_missingness_bounds(k=3, m=0, n=150, pool_size=698)
+        self.assertTrue(b["bounds_are_degenerate"])
+        self.assertTrue(b["estimable"])
+        self.assertEqual(
+            b["optimistic"]["detector_clean_miss_prevalence"],
+            b["pessimistic"]["detector_clean_miss_prevalence"],
+        )
+        self.assertEqual(b["complete_case_n"], 150)
+
+    def test_m_positive_band_separates(self):
+        # m > 0 -> optimistic (misses=k) below pessimistic (misses=k+m); the
+        # complete-case point k/(n-m) is reported for description only.
+        b = ER.compute_missingness_bounds(k=3, m=5, n=150, pool_size=698)
+        self.assertFalse(b["bounds_are_degenerate"])
+        self.assertTrue(b["estimable"])
+        self.assertEqual(b["observed_misses_k"], 3)
+        self.assertEqual(b["permanent_invalid_m"], 5)
+        self.assertEqual(b["complete_case_n"], 145)
+        opt = b["optimistic"]["detector_clean_miss_prevalence"]
+        pess = b["pessimistic"]["detector_clean_miss_prevalence"]
+        self.assertLess(opt, pess)
+        self.assertEqual(b["optimistic"]["misses"], 3)
+        self.assertEqual(b["pessimistic"]["misses"], 8)
+        self.assertAlmostEqual(b["complete_case_point"], round(3 / 145, 4))
+
+    def test_all_invalid_point_unestimable_band_defined(self):
+        # m == n -> complete-case denominator 0, point None; band over n stays
+        # defined (optimistic 0/n, pessimistic n/n).
+        b = ER.compute_missingness_bounds(k=0, m=150, n=150, pool_size=698)
+        self.assertFalse(b["estimable"])
+        self.assertIsNone(b["complete_case_point"])
+        self.assertEqual(b["optimistic"]["misses"], 0)
+        self.assertEqual(b["pessimistic"]["misses"], 150)
 
 
 class TestFormatJudgeProgress(unittest.TestCase):
@@ -657,9 +716,9 @@ class TestMainStdoutJsonContract(unittest.TestCase):
     directory so no real trace file, credential file, or judge endpoint is ever
     touched. They pin the reported-metric contract that the pure-logic tests
     cannot reach: the ``metrics_available`` flag, the scope-disclosure fields
-    (``evidence_window_scope`` / ``headline_metric_scope``), and the ``n == 0``
-    (all-invalid) console wording that must read ``unavailable``, never a
-    spurious 0%/100%.
+    (``evidence_window_scope`` / ``metric_scope``), and the ``n == 0``
+    (all-invalid) console wording that must read ``unavailable`` /
+    ``unestimable``, never a spurious 0%/100%.
     """
 
     def _run_main(self, scripted_contents, extra_argv=None):
@@ -689,47 +748,49 @@ class TestMainStdoutJsonContract(unittest.TestCase):
                  mock.patch.object(sys, "argv", argv), \
                  contextlib.redirect_stdout(buf):
                 ER.main()
-            out = json.loads((tmp / "recall_estimation.json").read_text(
-                encoding="utf-8"))
+            # Per-run output filename: never the old fixed recall_estimation.json.
+            written = list(tmp.glob("recall_estimation_*.json"))
+            self.assertEqual(len(written), 1,
+                             f"expected exactly one per-run artifact, got {written}")
+            out = json.loads(written[0].read_text(encoding="utf-8"))
         return out, buf.getvalue()
 
     def test_all_valid_reports_available_metrics(self):
         out, stdout = self._run_main([VALID_JSON])
         self.assertTrue(out["metrics_available"])
         self.assertEqual(out["valid_judgments"], 2)
-        self.assertIsNotNone(out["false_negative_rate"])
-        self.assertIsNotNone(out["recall"])
+        self.assertIsNotNone(out["detector_clean_miss_prevalence_optimistic"])
+        # Behavioral naming only: recall / FNR must not resurface at top level.
+        self.assertNotIn("recall", out)
+        self.assertNotIn("false_negative_rate", out)
+        self.assertEqual(out["estimand"], "pooled_detector_clean_miss_prevalence")
         # Scope-disclosure fields must always ride along with the numbers.
         self.assertIn("evidence_window_scope", out)
-        self.assertIn("headline_metric_scope", out)
-        self.assertIn("lower bound", out["headline_metric_scope"])
-        self.assertIn(str(ER.EVENT_ARG_TRUNCATION_CHARS),
-                      out["evidence_window_scope"])
-        # Headline metrics are estimable, so the headline lines must show a
-        # percentage, not the n==0 "unavailable" fallback. (An empty diagnostic
-        # stratum may still legitimately print "unavailable" elsewhere.)
-        self.assertIn("Estimated false-negative rate (LOWER BOUND", stdout)
-        self.assertNotIn("Estimated false-negative rate: unavailable", stdout)
-        self.assertNotIn("Estimated recall: unavailable", stdout)
+        self.assertIn("metric_scope", out)
+        self.assertIn("NOT recall", out["metric_scope"])
+        self.assertEqual(out["evidence_truncation_chars"],
+                         ER.EVENT_ARG_TRUNCATION_CHARS)
+        self.assertIn("untruncated", out["evidence_window_scope"])
+        # Headline prevalence is estimable, so the console must show a
+        # percentage, not the n==0 "unavailable" fallback.
+        self.assertIn("Detector-clean miss prevalence", stdout)
+        self.assertNotIn("all judgments invalid", stdout)
 
     def test_all_invalid_reports_unavailable_not_zero(self):
-        # HIGH contract: every judgment invalid -> n == 0. FNR/recall must be
+        # HIGH contract: every judgment invalid -> n == 0 valid. Point must be
         # null in JSON and "unavailable" in stdout, never 0.0%/100.0%.
         out, stdout = self._run_main([INVALID_JSON])
         self.assertFalse(out["metrics_available"])
         self.assertEqual(out["valid_judgments"], 0)
         self.assertEqual(out["invalid_judgments"], 2)
-        self.assertIsNone(out["false_negative_rate"])
-        self.assertIsNone(out["recall"])
+        self.assertIsNone(out["detector_clean_miss_prevalence_complete_case"])
         # Scope fields are still present even with no estimable metric.
         self.assertIn("evidence_window_scope", out)
-        self.assertIn("headline_metric_scope", out)
-        # Headline FNR and recall must both read "unavailable", never a
-        # spurious 0.0% / 100.0% from dividing by an empty denominator.
-        self.assertIn("Estimated false-negative rate: unavailable", stdout)
-        self.assertIn("Estimated recall: unavailable", stdout)
-        self.assertNotIn("0.0%", stdout)
-        self.assertNotIn("100.0%", stdout)
+        self.assertIn("metric_scope", out)
+        # The complete-case point must read "unavailable", never a spurious
+        # 0.0% / 100.0% from dividing by an empty denominator.
+        self.assertIn("unavailable", stdout)
+        self.assertIn("unestimable", stdout)
 
     def test_invalid_judgment_prints_INVALID_progress_line(self):
         _, stdout = self._run_main([INVALID_JSON])
@@ -740,28 +801,46 @@ class TestMainStdoutJsonContract(unittest.TestCase):
         # End-to-end shape guard for the diagnostic/audit top-level fields that
         # the pure-logic tests exercise only in isolation.
         out, _ = self._run_main([VALID_JSON])
-        # truncation_strata: both strata present, each with the full estimator
-        # shape from compute_pooled_fnr_recall.
+        # truncation_strata: both strata present, each with the miss-prevalence
+        # estimator shape from compute_pooled_miss_prevalence.
         strata = out["truncation_strata"]
         self.assertEqual(set(strata), {"truncated", "non_truncated"})
         for s in strata.values():
             self.assertEqual(
                 set(s),
-                {"n", "leaks", "false_negative_rate", "false_negative_rate_ci95",
-                 "recall", "recall_ci95"},
+                {"n", "misses", "detector_clean_miss_prevalence",
+                 "detector_clean_miss_prevalence_ci95", "ci95_method"},
             )
         # census_*: complete run (full pool drawn, all valid).
         self.assertIs(out["census_complete"], True)
         self.assertEqual(out["census_status"], "complete")
         self.assertIsInstance(out["census_note"], str)
+        # missingness bounds: m == 0 here -> degenerate band.
+        self.assertTrue(out["detector_clean_miss_prevalence_bounds"]
+                        ["bounds_are_degenerate"])
         # retry_*: report mode collapses the retry audit to zero/empty.
         self.assertEqual(out["retry_policy"], "report")
         self.assertEqual(out["max_retries"], 0)
         self.assertEqual(out["retry_attempts_total"], 0)
         self.assertEqual(out["retried_trace_ids"], [])
         self.assertEqual(out["remaining_invalid_after_retry"], 0)
-        # fnr_note: the lower-bound disclosure rides with every run.
-        self.assertIn("LOWER BOUND", out["fnr_note"])
+        # provenance: SRS frame identity must be recorded per run.
+        self.assertIn("sampling_frame_hash", out)
+        self.assertEqual(out["seed"], 42)
+        # judge provenance: provider/base_url + echoed model ids + token usage
+        # recorded, API key never.
+        prov = out["judge_provenance"]
+        self.assertIn("judge_api_base", prov)
+        self.assertIn("judge_provider", prov)
+        self.assertIn("api_echoed_model_ids", prov)
+        self.assertNotIn("api_key", prov)
+        self.assertIn("token_usage", prov)
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens",
+                    "judge_calls"):
+            self.assertIn(key, prov["token_usage"])
+        # cross-judge summary slot reserved (filled by an offline post-hoc pass).
+        self.assertIn("cross_judge_summary", out)
+        self.assertIsNone(out["cross_judge_summary"])
 
     def test_retry_mode_populates_retry_audit(self):
         # One trace invalid-then-valid under retry: the retry audit must record

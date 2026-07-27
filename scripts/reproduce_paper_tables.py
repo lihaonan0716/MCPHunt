@@ -209,10 +209,10 @@ def main() -> int:
     section("TABLE 4 (tab:causal): 2x2 factorial (GPT-5.4, v1)")
 
     for label, tid_set, env in [
-        ("Cross-boundaryxProduction", RISK_TASKS, "risky_v1"),
-        ("Cross-boundaryxPlaceholder", RISK_TASKS, "hard_neg_v1"),
-        ("Surface-levelxProduction", BENIGN_TASKS, "risky_v1"),
-        ("Surface-levelxPlaceholder", HN_TASKS, "hard_neg_v1"),
+        ("Cross-boundaryxRiskyValues", RISK_TASKS, "risky_v1"),
+        ("Cross-boundaryxAltValues", RISK_TASKS, "hard_neg_v1"),
+        ("Surface-levelxRiskyValues", BENIGN_TASKS, "risky_v1"),
+        ("Surface-levelxAltValues", HN_TASKS, "hard_neg_v1"),
     ]:
         sub = [t for t in gpt if t["task_id"] in tid_set and t["env_type"] == env]
         lk = sum(1 for t in sub if leaked(t))
