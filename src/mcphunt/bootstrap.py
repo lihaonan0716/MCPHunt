@@ -71,6 +71,68 @@ def bootstrap_ci(
     return (round(lo, 4), round(hi, 4))
 
 
+def cluster_bootstrap_ci(
+    clusters: List[np.ndarray],
+    stat_fn: Callable[[np.ndarray], float] = np.mean,
+    n_resamples: int = 10000,
+    confidence: float = 0.95,
+    seed: int = 42,
+) -> Tuple[float, float]:
+    """Percentile bootstrap CI resampling whole CLUSTERS, not flat rows.
+
+    A3 frozen contract (docs/a3_p3_report_completeness_plan.md 2.2): the
+    resampling unit is the *cluster* (a task), and when a cluster is drawn its
+    ENTIRE membership is carried along (all of that task's paired observations).
+    This corrects the too-narrow interval that a flat row-level bootstrap
+    produces when the same task contributes several correlated environment
+    variants -- the flat bootstrap treats those variants as independent units
+    and understates the variance.
+
+    Parameters
+    ----------
+    clusters : list of 1-D arrays. Each array holds the per-observation values
+        (e.g. per-pair defense-minus-baseline differences) belonging to ONE
+        cluster (task). A resample draws ``len(clusters)`` clusters WITH
+        replacement and concatenates their members, so within-cluster structure
+        is preserved exactly.
+    stat_fn : statistic applied to the concatenated resample (default mean ->
+        the pair-weighted point when each member is a per-pair value).
+    n_resamples : bootstrap iterations (10000 is the frozen contract).
+    confidence : CI level (0.95 -> percentile 95% CI, the frozen interval type).
+    seed : RNG seed (42, frozen and recorded by the caller).
+
+    Returns
+    -------
+    (lo, hi) rounded to 4 dp, percentile interval. Degenerate cases:
+    no clusters or all-empty -> (0.0, 0.0); a single non-empty observation
+    total -> (v, v). The interval type is ALWAYS percentile (never BCa) so it
+    matches the frozen contract regardless of cluster count.
+    """
+    members = [np.asarray(c, dtype=float) for c in clusters if len(c) > 0]
+    n_clusters = len(members)
+    if n_clusters == 0:
+        return (0.0, 0.0)
+
+    all_vals = np.concatenate(members)
+    if all_vals.size == 0:
+        return (0.0, 0.0)
+    if all_vals.size == 1:
+        v = float(stat_fn(all_vals))
+        return (round(v, 4), round(v, 4))
+
+    rng = np.random.RandomState(seed)
+    alpha = 1 - confidence
+    boot_stats = np.empty(n_resamples)
+    for i in range(n_resamples):
+        idx = rng.randint(0, n_clusters, size=n_clusters)
+        resample = np.concatenate([members[j] for j in idx])
+        boot_stats[i] = stat_fn(resample)
+
+    lo = float(np.percentile(boot_stats, 100 * alpha / 2))
+    hi = float(np.percentile(boot_stats, 100 * (1 - alpha / 2)))
+    return (round(lo, 4), round(hi, 4))
+
+
 def _norm_cdf(x: float) -> float:
     return 0.5 * (1 + erf(x / sqrt(2)))
 

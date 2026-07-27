@@ -39,6 +39,7 @@ from mcphunt.taxonomy import (
     TASK_MECHANISM_MAP,
 )
 from mcphunt import actual_sink
+from mcphunt.bootstrap import cluster_bootstrap_ci
 
 BASELINE_TRACES_DIR = REPO_ROOT / "results" / "agent_traces"
 MITIGATION_TRACES_DIR = REPO_ROOT / "results" / "mitigation_traces"
@@ -294,6 +295,262 @@ def _utility_labels(traces: List[Dict]) -> np.ndarray:
     )
 
 
+def _trace_mechanism(trace: Dict) -> str:
+    """Risk-mechanism key for a trace (frozen field with legacy fallback)."""
+    return trace.get("risk_mechanism", trace.get("task_category", ""))
+
+
+# Mechanisms excluded from the "risk mechanisms only" residual aggregate. The
+# per-mechanism split still reports benign_control for transparency, but the
+# browser-vs-other-eight comparison must never sum it into a denominator.
+_NON_RISK_MECHANISMS = frozenset({"benign_control", "hard_negative"})
+_BROWSER_MECHANISM = "browser_to_local"
+
+
+class PairingIntegrityError(ValueError):
+    """Raised when the A3 paired safety surface cannot be computed soundly.
+
+    The A3 frozen contract (docs/a3_p3_report_completeness_plan.md 2.4) requires
+    every defense trace to have exactly one baseline counterpart at the same
+    ``(task_id, env_type)`` (and vice versa), from a single model. A duplicate
+    cell, an unmatched cell, or a multi-model arm makes the pair-weighted point
+    and the task-clustered interval ill-defined, so the analysis ABORTS rather
+    than computing a statistic over a broken pairing.
+    """
+
+
+def paired_actual_sink_analysis(
+    baseline: List[Dict], defense: List[Dict], seed: int = 42
+) -> Dict[str, Any]:
+    """Paired M0-vs-defense actual_sink analysis (A3 frozen estimand).
+
+    This is the ONLY released/reviewer-facing safety surface for the P3
+    comparison (docs/a3_p3_report_completeness_plan.md 2 / 6). It replaces the
+    old unpaired two-sample surface (bootstrap_diff_ci + permutation_p), which
+    treated 387 task x env pairs as independent units and produced a too-narrow
+    interval.
+
+    Frozen contract:
+      * pairing key = ``(task_id, env_type)``; the 387 task x env pairs are NOT
+        387 independent tasks (risky_v1/v2/v3 are env variants of one task).
+      * point estimand = pair-weighted difference (mean over pairs of
+        defense_sink - baseline_sink).
+      * primary uncertainty interval = task-clustered percentile bootstrap
+        (resampling unit = task; a resampled task carries ALL its pairs;
+        seed frozen and recorded; 10,000 resamples; percentile 95%). It is an
+        UNCERTAINTY interval, not a significance test, and does NOT remove the
+        non-contemporaneous / commit / prompt confounds (see the disclosure in
+        the analysis output and the rebuttal text).
+      * McNemar = discordance diagnostic ONLY (b/c discordant-pair counts and
+        raw ratio); NO significance inference, NO p-value.
+      * pairing integrity is asserted before any statistic is computed.
+
+    Returns a dict carrying the pairing audit, the pair-weighted point + its
+    task-clustered CI, the per-mechanism baseline-vs-defense-residual split, and
+    the McNemar discordance counts. It never emits a p-value or an unpaired
+    diff CI.
+    """
+    def _index(traces: List[Dict], arm: str):
+        # Single-model scope (A3 claim): a defense arm spanning multiple models
+        # would let one (task, env) cell carry several traces, so the pairing is
+        # only well-defined when each arm is exactly one model. Abort otherwise.
+        models = {str(t.get("model", "")) for t in traces}
+        if len(models) > 1:
+            raise PairingIntegrityError(
+                f"{arm} arm spans {len(models)} models {sorted(models)}; the "
+                "paired live-guard surface is single-model scope -- pass "
+                "--model <model> so baseline and defense are one model each."
+            )
+        idx: Dict[Tuple[str, str], Dict] = {}
+        dups: List[Tuple[str, str]] = []
+        for t in traces:
+            key = (str(t.get("task_id", "")), str(t.get("env_type", "")))
+            if key in idx:
+                # A duplicate (task, env) cell makes the pair ambiguous; record
+                # it and abort below -- never silently keep the first.
+                dups.append(key)
+            else:
+                idx[key] = t
+        if dups:
+            raise PairingIntegrityError(
+                f"{arm} arm has duplicate (task_id, env_type) cells "
+                f"{sorted(set(dups))}; each cell must be unique for a sound pair."
+            )
+        return idx, models
+
+    base_idx, base_models = _index(baseline, "baseline")
+    def_idx, def_models = _index(defense, "defense")
+    # Cross-arm single-model scope: the pair-weighted difference is a
+    # within-model contrast, so a baseline from model A paired against a defense
+    # from model B is not a valid pair. Both arms must carry the SAME single
+    # model (empty model labels are allowed only when both arms omit them).
+    if base_models and def_models and base_models != def_models:
+        raise PairingIntegrityError(
+            f"baseline model(s) {sorted(base_models)} != defense model(s) "
+            f"{sorted(def_models)}; the paired surface is a within-model "
+            "contrast -- baseline and defense must be the same single model."
+        )
+    base_keys = set(base_idx)
+    def_keys = set(def_idx)
+    paired_keys = sorted(base_keys & def_keys)
+    baseline_only = sorted(base_keys - def_keys)
+    defense_only = sorted(def_keys - base_keys)
+
+    # Pairing must be COMPLETE: every cell on both sides has a counterpart. An
+    # unmatched cell makes the pair-weighted point and the clustered interval
+    # ill-defined, so abort (A3 frozen contract 2.4) rather than computing over
+    # the intersection and silently dropping the rest.
+    if baseline_only or defense_only:
+        raise PairingIntegrityError(
+            f"incomplete pairing: {len(baseline_only)} baseline-only cell(s) "
+            f"{[list(k) for k in baseline_only[:5]]} and {len(defense_only)} "
+            f"defense-only cell(s) {[list(k) for k in defense_only[:5]]}; "
+            "every (task_id, env_type) must appear in both arms."
+        )
+
+    pairing = {
+        "n_baseline_traces": len(baseline),
+        "n_defense_traces": len(defense),
+        "n_baseline_cells": len(base_idx),
+        "n_defense_cells": len(def_idx),
+        "n_paired": len(paired_keys),
+        "n_baseline_only": 0,
+        "n_defense_only": 0,
+        "baseline_only_keys": [],
+        "defense_only_keys": [],
+        # Reaching here means the pairing passed the abort checks above.
+        "complete": True,
+    }
+
+    # Per-pair defense - baseline difference on the actual_sink label, plus the
+    # pair -> task cluster map (the cluster is the task_id; all its env-variant
+    # pairs are carried together by the clustered bootstrap).
+    per_task_diffs: Dict[str, List[float]] = defaultdict(list)
+    mech_by_key: Dict[Tuple[str, str], str] = {}
+    b_label: Dict[Tuple[str, str], int] = {}
+    d_label: Dict[Tuple[str, str], int] = {}
+    n_prompt_diff = 0  # pairs whose baseline/defense task_prompt text differs
+    for key in paired_keys:
+        bt, dt = base_idx[key], def_idx[key]
+        bl = 1 if actual_sink.trace_actual_sink_unsafe(bt) else 0
+        dl = 1 if actual_sink.trace_actual_sink_unsafe(dt) else 0
+        b_label[key] = bl
+        d_label[key] = dl
+        per_task_diffs[key[0]].append(float(dl - bl))
+        mech_by_key[key] = _trace_mechanism(dt) or _trace_mechanism(bt)
+        if str(bt.get("task_prompt", "")) != str(dt.get("task_prompt", "")):
+            n_prompt_diff += 1
+
+    all_diffs = [d for diffs in per_task_diffs.values() for d in diffs]
+    point = round(float(np.mean(all_diffs)), 4) if all_diffs else 0.0
+    clusters = [np.array(v, dtype=float) for v in per_task_diffs.values()]
+    ci_lo, ci_hi = cluster_bootstrap_ci(clusters, seed=seed)
+
+    # McNemar discordance diagnostic ONLY: b = baseline-safe & defense-unsafe,
+    # c = baseline-unsafe & defense-safe. No chi-square, no p-value -- treating
+    # env variants as independent repeats would over-state effective df.
+    b_discord = sum(1 for k in paired_keys if b_label[k] == 0 and d_label[k] == 1)
+    c_discord = sum(1 for k in paired_keys if b_label[k] == 1 and d_label[k] == 0)
+    mcnemar = {
+        "b_baseline_safe_defense_unsafe": b_discord,
+        "c_baseline_unsafe_defense_safe": c_discord,
+        "discordant_total": b_discord + c_discord,
+        "discordance_ratio_c_over_b": (round(c_discord / b_discord, 4)
+                                       if b_discord else None),
+        "note": ("discordance diagnostic only; no significance inference "
+                 "(env variants are not independent repeats)"),
+    }
+
+    # Per-mechanism split: baseline per-mechanism rate and defense RESIDUAL
+    # reported SEPARATELY so 'the other eight ~0' is never mis-read as
+    # 'baseline was zero' (plan 3 / todo 1.4).
+    per_mech: Dict[str, Any] = {}
+    keys_by_mech: Dict[str, List[Tuple[str, str]]] = defaultdict(list)
+    for key in paired_keys:
+        keys_by_mech[mech_by_key[key]].append(key)
+    for mech, keys in sorted(keys_by_mech.items()):
+        n_pairs = len(keys)
+        base_unsafe = sum(b_label[k] for k in keys)
+        def_unsafe = sum(d_label[k] for k in keys)
+        n_tasks = len({k[0] for k in keys})
+        per_mech[mech] = {
+            "n_pairs": n_pairs,
+            "n_tasks": n_tasks,
+            "baseline_actual_sink_unsafe_n": base_unsafe,
+            "baseline_actual_sink_unsafe_rate": (round(base_unsafe / n_pairs, 4)
+                                                 if n_pairs else 0.0),
+            "defense_residual_unsafe_n": def_unsafe,
+            "defense_residual_unsafe_rate": (round(def_unsafe / n_pairs, 4)
+                                             if n_pairs else 0.0),
+        }
+
+    # Browser-vs-other-eight aggregate over RISK mechanisms only: benign_control
+    # (and any hard_negative) are excluded from the denominator so the residual
+    # comparison is over the nine risk mechanisms, not the control pairs. The A3
+    # writing target is browser_to_local residual vs the other eight risk
+    # mechanisms; summing benign_control in would give the wrong denominator.
+    def _agg(keys: List[Tuple[str, str]]) -> Dict[str, Any]:
+        n_pairs = len(keys)
+        base_u = sum(b_label[k] for k in keys)
+        def_u = sum(d_label[k] for k in keys)
+        return {
+            "n_pairs": n_pairs,
+            "n_tasks": len({k[0] for k in keys}),
+            "baseline_actual_sink_unsafe_n": base_u,
+            "baseline_actual_sink_unsafe_rate": (round(base_u / n_pairs, 4)
+                                                 if n_pairs else 0.0),
+            "defense_residual_unsafe_n": def_u,
+            "defense_residual_unsafe_rate": (round(def_u / n_pairs, 4)
+                                             if n_pairs else 0.0),
+        }
+
+    risk_keys = [k for k in paired_keys
+                 if mech_by_key[k] not in _NON_RISK_MECHANISMS]
+    browser_keys = [k for k in risk_keys if mech_by_key[k] == _BROWSER_MECHANISM]
+    other_risk_keys = [k for k in risk_keys
+                       if mech_by_key[k] != _BROWSER_MECHANISM]
+    excluded_mechs = sorted({mech_by_key[k] for k in paired_keys
+                             if mech_by_key[k] in _NON_RISK_MECHANISMS})
+    risk_only = {
+        "excluded_mechanisms": excluded_mechs,
+        "all_risk_mechanisms": _agg(risk_keys),
+        "browser_to_local": _agg(browser_keys),
+        "other_risk_mechanisms": _agg(other_risk_keys),
+    }
+
+    n_tasks_total = len(per_task_diffs)
+    return {
+        "estimand": "pair_weighted_actual_sink_difference",
+        "uncertainty": "task_clustered_percentile_bootstrap",
+        "seed": seed,
+        "n_resamples": 10000,
+        "ci_type": "percentile_95",
+        "pairing": pairing,
+        "n_pairs": len(paired_keys),
+        "n_tasks": n_tasks_total,
+        "pair_weighted_diff_defense_minus_baseline": point,
+        "pair_weighted_diff_ci95": [ci_lo, ci_hi],
+        "mcnemar_discordance": mcnemar,
+        "per_mechanism": per_mech,
+        "risk_mechanisms_only": risk_only,
+        "prompt_text_diff_pairs": n_prompt_diff,
+        "prompt_text_diff_note": (
+            f"{n_prompt_diff}/{len(paired_keys)} pairs differ in task_prompt "
+            "text between the baseline and defense arm (reproduced from traces; "
+            "a matched-coverage-arm confound, not removed by the bootstrap)"
+        ),
+        "confound_disclosure": (
+            "Descriptive historical matched-coverage comparison, not causal. "
+            "The task-clustered interval corrects the too-narrow CI from "
+            "repeated env variants only; it does NOT remove non-contemporaneous "
+            "arms, possible pipeline-commit differences, prompt-text "
+            "differences, arm ordering / retry / resume differences, "
+            "single-model scope, or the (suspected, unverified) memory-server "
+            "version difference."
+        ),
+    }
+
+
 def compare_live_guard(baseline: List[Dict], defense: List[Dict]) -> Dict[str, Any]:
     """Compare M0 baseline vs. active-defense arms on the frozen risky slice.
 
@@ -309,15 +566,12 @@ def compare_live_guard(baseline: List[Dict], defense: List[Dict]) -> Dict[str, A
     base_sink = actual_sink.compute_actual_sink_metrics(base_r)
     def_sink = actual_sink.compute_actual_sink_metrics(def_r)
 
-    # Primary safety significance (docs 4): the pre-registered hypothesis is
-    # that the guard REDUCES actual_sink_unsafe_rate. Report the signed
-    # difference (defense - baseline; negative = guard helped), its bootstrap CI,
-    # and the permutation-test p-value, using the same shared machinery as the
-    # legacy surfaces (bootstrap_diff_ci / significance_test).
-    base_sink_labels = np.array(actual_sink.actual_sink_labels(base_r), dtype=float)
-    def_sink_labels = np.array(actual_sink.actual_sink_labels(def_r), dtype=float)
-    s_point, s_lo, s_hi = bootstrap_diff_ci(def_sink_labels, base_sink_labels)
-    s_perm_p = significance_test(def_sink_labels, base_sink_labels)
+    # Primary safety surface (A3): the paired, pair-weighted actual_sink
+    # difference with a task-clustered percentile interval and a McNemar
+    # discordance diagnostic. This REPLACES the old unpaired two-sample surface
+    # (bootstrap_diff_ci + permutation_p), which is no longer emitted here so a
+    # paired and an unpaired interval never appear side by side.
+    paired = paired_actual_sink_analysis(base_r, def_r)
 
     # Utility non-inferiority on the identical risky slice.
     base_util = _utility_labels(base_r)
@@ -337,9 +591,9 @@ def compare_live_guard(baseline: List[Dict], defense: List[Dict]) -> Dict[str, A
             "defense_actual_sink_unsafe_rate": def_sink["actual_sink_unsafe_rate"],
             "baseline_blocked_residual_n": base_sink["blocked_residual_n"],
             "defense_blocked_residual_n": def_sink["blocked_residual_n"],
-            "diff_defense_minus_baseline": s_point,
-            "diff_ci": [s_lo, s_hi],
-            "permutation_p": s_perm_p,
+            # A3 paired surface: pair-weighted point + task-clustered interval +
+            # McNemar discordance. No unpaired diff_ci, no permutation_p.
+            "paired": paired,
         },
         "utility": {
             "delta": NONINFERIORITY_DELTA,
@@ -850,6 +1104,37 @@ def print_live_guard(data: Optional[Dict]) -> None:
     print("\n  Safety (actual_sink_unsafe_rate -- delivered leakage):")
     print(f"    baseline: {s['baseline_actual_sink_unsafe_rate']*100:5.1f}%   "
           f"defense: {s['defense_actual_sink_unsafe_rate']*100:5.1f}%")
+    pd = s.get("paired", {})
+    if pd:
+        pr = pd["pairing"]
+        ci = pd["pair_weighted_diff_ci95"]
+        mc = pd["mcnemar_discordance"]
+        print(f"\n  Paired A3 surface (pair-weighted diff, task-clustered "
+              f"percentile 95% CI; seed={pd['seed']}, {pd['n_resamples']} resamples):")
+        print(f"    pairs={pd['n_pairs']} over tasks={pd['n_tasks']}  "
+              f"(pairing complete={pr['complete']}; "
+              f"baseline_only={pr['n_baseline_only']}, "
+              f"defense_only={pr['n_defense_only']})")
+        print(f"    pair-weighted diff (defense - baseline): "
+              f"{pd['pair_weighted_diff_defense_minus_baseline']:+.4f}  "
+              f"CI [{ci[0]:+.4f}, {ci[1]:+.4f}]")
+        print(f"    McNemar discordance ONLY (no p-value): "
+              f"b(safe->unsafe)={mc['b_baseline_safe_defense_unsafe']}, "
+              f"c(unsafe->safe)={mc['c_baseline_unsafe_defense_safe']}")
+        print(f"    Prompt-text differing pairs (confound): "
+              f"{pd['prompt_text_diff_pairs']}/{pd['n_pairs']}")
+        print("\n    Per-mechanism baseline rate vs defense residual "
+              "(reported separately):")
+        print(f"      {'mechanism':22s} {'pairs':>5s} {'tasks':>5s} "
+              f"{'baseline':>18s} {'defense residual':>18s}")
+        for mech in sorted(pd["per_mechanism"]):
+            m = pd["per_mechanism"][mech]
+            b = (f"{m['baseline_actual_sink_unsafe_n']}/{m['n_pairs']} "
+                 f"({m['baseline_actual_sink_unsafe_rate']*100:.1f}%)")
+            d = (f"{m['defense_residual_unsafe_n']}/{m['n_pairs']} "
+                 f"({m['defense_residual_unsafe_rate']*100:.1f}%)")
+            print(f"      {mech:22s} {m['n_pairs']:5d} {m['n_tasks']:5d} "
+                  f"{b:>18s} {d:>18s}")
     print("\n  Utility non-inferiority "
           f"(delta={u['delta']*100:.0f}pp, artifact_verified):")
     print(f"    baseline: {u['baseline_utility_rate']*100:5.1f}%   "
@@ -955,8 +1240,15 @@ def main() -> None:
     pareto = safety_utility_pareto(legacy_traces)
 
     # Live-guard surface consumes the FULL set -- it isolates the M0 vs
-    # active-defense arms itself and returns None when an arm is absent.
-    live_guard = live_guard_comparison(traces)
+    # active-defense arms itself and returns None when an arm is absent. A
+    # broken pairing (duplicate/unmatched cells, or a multi-model arm) is a hard
+    # abort: print the reason and emit no paired statistic rather than a number
+    # over an ill-defined pairing (A3 frozen contract 2.4).
+    try:
+        live_guard = live_guard_comparison(traces)
+    except PairingIntegrityError as e:
+        print(f"\n[live-guard ABORTED] pairing integrity failed: {e}")
+        live_guard = None
     print_live_guard(live_guard)
 
     # Assemble the result dict. In isolated mode the artifact is scoped to
