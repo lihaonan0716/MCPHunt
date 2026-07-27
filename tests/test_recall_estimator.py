@@ -14,9 +14,11 @@ the frozen rules documented in ``docs/p2_recall_plan.md`` (rev 2):
 """
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
@@ -414,6 +416,366 @@ class TestEmptyPoolCells(unittest.TestCase):
         report = ER.build_allocation_report(traces, 1)
         models = {c["model"] for c in report["empty_pool_cells"]}
         self.assertEqual(models, {"a"})
+
+
+VALID_JSON = ('{"leaked": false, "confidence": "high", '
+              '"evidence": "clean", "leak_type": "none"}')
+INVALID_JSON = "the model refused to answer"  # -> parse_error -> valid=False
+
+
+class _SeqCompletions:
+    """Return scripted contents in call order; repeats the last once drained."""
+
+    def __init__(self, contents):
+        assert contents, "need at least one scripted content"
+        self._q = list(contents)
+        self.n_calls = 0
+
+    def create(self, **kwargs):
+        self.n_calls += 1
+        content = self._q.pop(0) if len(self._q) > 1 else self._q[0]
+        return _FakeResponse(content)
+
+
+class _SeqChat:
+    def __init__(self, contents):
+        self.completions = _SeqCompletions(contents)
+
+
+class _SeqClient:
+    """OpenAI-shaped client scripted with a sequence of response bodies."""
+
+    def __init__(self, contents):
+        self.chat = _SeqChat(contents)
+
+
+class TestTruncationStrata(unittest.TestCase):
+    def _valid(self):
+        return [
+            {"evidence_truncated": True, "leaked": True},
+            {"evidence_truncated": True, "leaked": False},
+            {"evidence_truncated": False, "leaked": False},
+            {"evidence_truncated": False, "leaked": False},
+        ]
+
+    def test_partition_sums_to_denominator(self):
+        s = ER.compute_truncation_strata(self._valid())
+        self.assertEqual(s["truncated"]["n"] + s["non_truncated"]["n"], 4)
+
+    def test_leaks_and_fnr_per_stratum(self):
+        s = ER.compute_truncation_strata(self._valid())
+        self.assertEqual(s["truncated"]["n"], 2)
+        self.assertEqual(s["truncated"]["leaks"], 1)
+        self.assertEqual(s["truncated"]["false_negative_rate"], 0.5)
+        self.assertEqual(s["non_truncated"]["n"], 2)
+        self.assertEqual(s["non_truncated"]["leaks"], 0)
+        self.assertEqual(s["non_truncated"]["false_negative_rate"], 0.0)
+
+    def test_recall_is_one_minus_fnr(self):
+        s = ER.compute_truncation_strata(self._valid())
+        self.assertEqual(s["non_truncated"]["recall"], 1.0)
+        self.assertEqual(s["truncated"]["recall"], 0.5)
+
+    def test_ci_fields_are_pairs(self):
+        s = ER.compute_truncation_strata(self._valid())
+        for name in ("truncated", "non_truncated"):
+            self.assertEqual(len(s[name]["false_negative_rate_ci95"]), 2)
+            self.assertEqual(len(s[name]["recall_ci95"]), 2)
+
+    def test_empty_stratum_is_unavailable_not_perfect_recall(self):
+        # An empty stratum must NOT report recall=1.0 / fnr=0.0 -- that would
+        # assert perfect recall from zero observations.
+        s = ER.compute_truncation_strata(
+            [{"evidence_truncated": False, "leaked": False}])
+        self.assertEqual(s["truncated"]["n"], 0)
+        self.assertIsNone(s["truncated"]["false_negative_rate"])
+        self.assertIsNone(s["truncated"]["recall"])
+
+
+class TestCensusStatus(unittest.TestCase):
+    def test_complete_only_when_pool_drawn_and_all_valid(self):
+        complete, status, _ = ER.compute_census_status(698, 698, 698)
+        self.assertTrue(complete)
+        self.assertEqual(status, "complete")
+
+    def test_sub_sample_is_not_a_census(self):
+        complete, status, _ = ER.compute_census_status(50, 50, 698)
+        self.assertFalse(complete)
+        self.assertEqual(status, "not_a_census")
+
+    def test_full_pool_with_invalid_is_incomplete(self):
+        # Full pool drawn but one judgment invalid -> denominator short.
+        complete, status, _ = ER.compute_census_status(698, 697, 698)
+        self.assertFalse(complete)
+        self.assertEqual(status, "incomplete_invalid")
+
+    def test_clean_full_pool_is_complete_at_any_pool_size(self):
+        complete, status, _ = ER.compute_census_status(10, 10, 10)
+        self.assertTrue(complete)
+        self.assertEqual(status, "complete")
+
+
+class TestJudgeSampleWithRetry(unittest.TestCase):
+    def test_report_mode_single_call_per_trace(self):
+        samples = [_trace(tid="a"), _trace(tid="b")]
+        client = _SeqClient([INVALID_JSON, VALID_JSON])
+        results, audit = ER.judge_sample_with_retry(
+            samples, client, "m", on_invalid="report", max_retries=2)
+        self.assertEqual(client.chat.completions.n_calls, 2)
+        self.assertEqual([r["judge_attempts"] for r in results], [1, 1])
+        self.assertTrue(all(r["finalized_after_retry"] is False for r in results))
+
+    def test_report_mode_fixed_audit_values(self):
+        samples = [_trace(tid="a")]  # invalid -> stays invalid under report
+        client = _SeqClient([INVALID_JSON])
+        results, audit = ER.judge_sample_with_retry(
+            samples, client, "m", on_invalid="report", max_retries=2)
+        self.assertEqual(audit["retry_policy"], "report")
+        self.assertEqual(audit["max_retries"], 0)
+        self.assertEqual(audit["retry_attempts_total"], 0)
+        self.assertEqual(audit["retried_trace_ids"], [])
+        self.assertEqual(audit["remaining_invalid_after_retry"], 1)
+        self.assertEqual(results[0]["judge_attempts"], 1)
+        self.assertFalse(results[0]["finalized_after_retry"])
+
+    def test_per_result_audit_fields_present_in_report_mode(self):
+        samples = [_trace(tid="a")]
+        client = _SeqClient([VALID_JSON])
+        results, _ = ER.judge_sample_with_retry(samples, client, "m")
+        r = results[0]
+        for key in ("evidence_truncated", "n_truncated_events",
+                    "judge_attempts", "finalized_after_retry"):
+            self.assertIn(key, r)
+
+    def test_truncation_flag_propagates_to_result(self):
+        big = {"turn": 1, "server": "fs", "tool": "write_file",
+               "args": {"content": "x" * (ER.EVENT_ARG_TRUNCATION_CHARS + 50)}}
+        samples = [_trace(tid="a", tool_events=[big])]
+        client = _SeqClient([VALID_JSON])
+        results, _ = ER.judge_sample_with_retry(samples, client, "m")
+        self.assertTrue(results[0]["evidence_truncated"])
+        self.assertEqual(results[0]["n_truncated_events"], 1)
+
+    def test_retry_recovers_invalid_then_valid(self):
+        samples = [_trace(tid="a")]
+        client = _SeqClient([INVALID_JSON, VALID_JSON])
+        results, audit = ER.judge_sample_with_retry(
+            samples, client, "m", on_invalid="retry", max_retries=2)
+        self.assertEqual(client.chat.completions.n_calls, 2)  # 1 initial + 1 retry
+        r = results[0]
+        self.assertEqual(r["judge_attempts"], 2)
+        self.assertTrue(r["finalized_after_retry"])
+        self.assertTrue(r["valid"])
+        self.assertEqual(audit["retry_attempts_total"], 1)
+        self.assertEqual(audit["retried_trace_ids"], ["a"])
+        self.assertEqual(audit["remaining_invalid_after_retry"], 0)
+
+    def test_retry_stops_at_max_retries(self):
+        samples = [_trace(tid="a")]
+        client = _SeqClient([INVALID_JSON])  # never becomes valid
+        results, audit = ER.judge_sample_with_retry(
+            samples, client, "m", on_invalid="retry", max_retries=2)
+        self.assertEqual(client.chat.completions.n_calls, 3)  # 1 + 2 retries
+        r = results[0]
+        self.assertEqual(r["judge_attempts"], 3)
+        self.assertFalse(r["finalized_after_retry"])
+        self.assertFalse(r["valid"])
+        self.assertEqual(audit["retry_attempts_total"], 2)
+        self.assertEqual(audit["remaining_invalid_after_retry"], 1)
+
+    def test_retry_only_touches_invalid_traces(self):
+        # a valid (1 call), b invalid then valid (2 calls) -> 3 total.
+        samples = [_trace(tid="a"), _trace(tid="b")]
+        client = _SeqClient([VALID_JSON, INVALID_JSON, VALID_JSON])
+        results, audit = ER.judge_sample_with_retry(
+            samples, client, "m", on_invalid="retry", max_retries=2)
+        self.assertEqual(client.chat.completions.n_calls, 3)
+        self.assertEqual(results[0]["judge_attempts"], 1)
+        self.assertEqual(results[1]["judge_attempts"], 2)
+        self.assertEqual(audit["retried_trace_ids"], ["b"])
+
+
+class TestPooledFnrRecall(unittest.TestCase):
+    def test_zero_valid_gives_none_not_perfect_recall(self):
+        # HIGH: n == 0 (all invalid) must not report FNR=0 / recall=1.
+        m = ER.compute_pooled_fnr_recall(0, 0)
+        self.assertIsNone(m["false_negative_rate"])
+        self.assertIsNone(m["recall"])
+        # No-information Wilson interval is still reported honestly.
+        self.assertEqual(m["false_negative_rate_ci95"], [0.0, 1.0])
+        self.assertEqual(m["recall_ci95"], [0.0, 1.0])
+
+    def test_normal_point_estimate(self):
+        m = ER.compute_pooled_fnr_recall(2, 8)
+        self.assertEqual(m["false_negative_rate"], 0.25)
+        self.assertEqual(m["recall"], 0.75)
+
+    def test_zero_leaks_nonzero_n_is_a_real_zero(self):
+        # n > 0 with 0 leaks IS a legitimate FNR=0 estimate (not None).
+        m = ER.compute_pooled_fnr_recall(0, 10)
+        self.assertEqual(m["false_negative_rate"], 0.0)
+        self.assertEqual(m["recall"], 1.0)
+
+
+class TestFormatJudgeProgress(unittest.TestCase):
+    def test_invalid_judgment_prints_INVALID_not_clean(self):
+        # MEDIUM: a parse/API-error judgment (leaked=False, valid=False) must
+        # not be shown as "clean".
+        judgment = {"leaked": False, "valid": False, "confidence": "low",
+                    "evidence": "parse_error: no JSON object", "leak_type": "none"}
+        line = ER.format_judge_progress(0, 5, _trace(tid="a"), judgment)
+        self.assertIn("INVALID", line)
+        self.assertIn("parse_error", line)
+        self.assertNotIn("clean", line)
+
+    def test_valid_clean_judgment(self):
+        judgment = {"leaked": False, "valid": True, "confidence": "high",
+                    "evidence": "nothing", "leak_type": "none"}
+        line = ER.format_judge_progress(1, 5, _trace(tid="b"), judgment)
+        self.assertIn("clean", line)
+        self.assertNotIn("INVALID", line)
+
+    def test_valid_leaked_judgment(self):
+        judgment = {"leaked": True, "valid": True, "confidence": "high",
+                    "evidence": "secret", "leak_type": "semantic"}
+        line = ER.format_judge_progress(2, 5, _trace(tid="c"), judgment)
+        self.assertIn("LEAKED", line)
+        self.assertIn("semantic", line)
+
+    def test_retry_attempt_count_shown(self):
+        judgment = {"leaked": False, "valid": True, "confidence": "high",
+                    "evidence": "x", "leak_type": "none", "judge_attempts": 3}
+        line = ER.format_judge_progress(0, 5, _trace(tid="d"), judgment)
+        self.assertIn("3 attempts", line)
+
+
+class TestMainStdoutJsonContract(unittest.TestCase):
+    """End-to-end ``main()`` smoke tests over the non-dry-run judging path.
+
+    Fully hermetic: the trace loader is stubbed, a fake ``openai`` module is
+    injected, and both ``REPO_ROOT`` and ``OUTPUT_DIR`` are redirected to a temp
+    directory so no real trace file, credential file, or judge endpoint is ever
+    touched. They pin the reported-metric contract that the pure-logic tests
+    cannot reach: the ``metrics_available`` flag, the scope-disclosure fields
+    (``evidence_window_scope`` / ``headline_metric_scope``), and the ``n == 0``
+    (all-invalid) console wording that must read ``unavailable``, never a
+    spurious 0%/100%.
+    """
+
+    def _run_main(self, scripted_contents, extra_argv=None):
+        import contextlib
+        import io
+        import tempfile
+
+        candidates = [
+            _candidate(model="m", mech="file_to_file", tid="a"),
+            _candidate(model="m", mech="file_to_file", tid="b"),
+        ]
+
+        class _FakeOpenAIModule:
+            OpenAI = staticmethod(lambda **kw: _SeqClient(scripted_contents))
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            argv = ["estimate_recall.py", "--sample-size", "50",
+                    "--judge-api-key", "x", "--judge-api-base", "http://unused"]
+            argv += extra_argv or []
+            buf = io.StringIO()
+            with mock.patch.object(ER, "load_agent_traces",
+                                   return_value=list(candidates)), \
+                 mock.patch.object(ER, "OUTPUT_DIR", tmp), \
+                 mock.patch.object(ER, "REPO_ROOT", tmp), \
+                 mock.patch.dict(sys.modules, {"openai": _FakeOpenAIModule()}), \
+                 mock.patch.object(sys, "argv", argv), \
+                 contextlib.redirect_stdout(buf):
+                ER.main()
+            out = json.loads((tmp / "recall_estimation.json").read_text(
+                encoding="utf-8"))
+        return out, buf.getvalue()
+
+    def test_all_valid_reports_available_metrics(self):
+        out, stdout = self._run_main([VALID_JSON])
+        self.assertTrue(out["metrics_available"])
+        self.assertEqual(out["valid_judgments"], 2)
+        self.assertIsNotNone(out["false_negative_rate"])
+        self.assertIsNotNone(out["recall"])
+        # Scope-disclosure fields must always ride along with the numbers.
+        self.assertIn("evidence_window_scope", out)
+        self.assertIn("headline_metric_scope", out)
+        self.assertIn("lower bound", out["headline_metric_scope"])
+        self.assertIn(str(ER.EVENT_ARG_TRUNCATION_CHARS),
+                      out["evidence_window_scope"])
+        # Headline metrics are estimable, so the headline lines must show a
+        # percentage, not the n==0 "unavailable" fallback. (An empty diagnostic
+        # stratum may still legitimately print "unavailable" elsewhere.)
+        self.assertIn("Estimated false-negative rate (LOWER BOUND", stdout)
+        self.assertNotIn("Estimated false-negative rate: unavailable", stdout)
+        self.assertNotIn("Estimated recall: unavailable", stdout)
+
+    def test_all_invalid_reports_unavailable_not_zero(self):
+        # HIGH contract: every judgment invalid -> n == 0. FNR/recall must be
+        # null in JSON and "unavailable" in stdout, never 0.0%/100.0%.
+        out, stdout = self._run_main([INVALID_JSON])
+        self.assertFalse(out["metrics_available"])
+        self.assertEqual(out["valid_judgments"], 0)
+        self.assertEqual(out["invalid_judgments"], 2)
+        self.assertIsNone(out["false_negative_rate"])
+        self.assertIsNone(out["recall"])
+        # Scope fields are still present even with no estimable metric.
+        self.assertIn("evidence_window_scope", out)
+        self.assertIn("headline_metric_scope", out)
+        # Headline FNR and recall must both read "unavailable", never a
+        # spurious 0.0% / 100.0% from dividing by an empty denominator.
+        self.assertIn("Estimated false-negative rate: unavailable", stdout)
+        self.assertIn("Estimated recall: unavailable", stdout)
+        self.assertNotIn("0.0%", stdout)
+        self.assertNotIn("100.0%", stdout)
+
+    def test_invalid_judgment_prints_INVALID_progress_line(self):
+        _, stdout = self._run_main([INVALID_JSON])
+        # Per-trace progress must flag invalid judgments, not print "clean".
+        self.assertIn("INVALID", stdout)
+
+    def test_top_level_output_shape_report_mode(self):
+        # End-to-end shape guard for the diagnostic/audit top-level fields that
+        # the pure-logic tests exercise only in isolation.
+        out, _ = self._run_main([VALID_JSON])
+        # truncation_strata: both strata present, each with the full estimator
+        # shape from compute_pooled_fnr_recall.
+        strata = out["truncation_strata"]
+        self.assertEqual(set(strata), {"truncated", "non_truncated"})
+        for s in strata.values():
+            self.assertEqual(
+                set(s),
+                {"n", "leaks", "false_negative_rate", "false_negative_rate_ci95",
+                 "recall", "recall_ci95"},
+            )
+        # census_*: complete run (full pool drawn, all valid).
+        self.assertIs(out["census_complete"], True)
+        self.assertEqual(out["census_status"], "complete")
+        self.assertIsInstance(out["census_note"], str)
+        # retry_*: report mode collapses the retry audit to zero/empty.
+        self.assertEqual(out["retry_policy"], "report")
+        self.assertEqual(out["max_retries"], 0)
+        self.assertEqual(out["retry_attempts_total"], 0)
+        self.assertEqual(out["retried_trace_ids"], [])
+        self.assertEqual(out["remaining_invalid_after_retry"], 0)
+        # fnr_note: the lower-bound disclosure rides with every run.
+        self.assertIn("LOWER BOUND", out["fnr_note"])
+
+    def test_retry_mode_populates_retry_audit(self):
+        # One trace invalid-then-valid under retry: the retry audit must record
+        # the extra call and the recovered denominator, and stdout must show it.
+        out, stdout = self._run_main(
+            [INVALID_JSON, VALID_JSON],
+            extra_argv=["--on-invalid", "retry", "--max-retries", "2"],
+        )
+        self.assertEqual(out["retry_policy"], "retry")
+        self.assertEqual(out["max_retries"], 2)
+        self.assertGreaterEqual(out["retry_attempts_total"], 1)
+        self.assertIn("a", out["retried_trace_ids"])
+        self.assertEqual(out["remaining_invalid_after_retry"], 0)
+        self.assertIn("Retry policy: retry", stdout)
 
 
 if __name__ == "__main__":
