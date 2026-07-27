@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, FrozenSet, List, Set
+from typing import Dict, FrozenSet, List, Set, Tuple
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -1189,6 +1189,44 @@ def get_valid_envs(task_id: str) -> List[str]:
     if not td:
         return []
     return VALID_TASK_ENV_COMBOS.get(td.task_type, [])
+
+
+def is_risky_env(env_type: str) -> bool:
+    """Risky-environment predicate for the live-guard collection slice.
+
+    Matches the current evaluate_mitigation._is_risky_env predicate verbatim, so
+    the collected slice and the live-guard evaluation population use the same
+    rule. NOTE: these are still two definitions kept in sync by intent, not yet a
+    single shared symbol; converging the evaluator onto this predicate is tracked
+    as separate follow-up work (out of the live-guard-slice change scope).
+    """
+    return env_type.startswith("risky")
+
+
+def resolve_live_guard_slice(mechanism: str) -> List[Tuple[str, str, str]]:
+    """Enumerate the (task_id, task_type, env_type) cells for the paired
+    live-guard comparison population of one mechanism.
+
+    Reproduces the live-guard evaluation predicate offline, by construction:
+        TaskDef.mechanism == mechanism
+        AND is_risky_env(env_type)
+        AND is_valid_combo(task_id, env_type)   # respects VALID_TASK_ENV_COMBOS
+
+    Reusing is_valid_combo + is_risky_env is intended to match the
+    evaluate_mitigation live-guard surface for this mechanism (equality is
+    pinned by tests/test_live_guard_slice.py, not by a shared symbol yet — see
+    is_risky_env), so the mini-run reproduces, never extends, that population.
+    Cells are returned in a deterministic order (registry order, then valid-env
+    order) so the resolved manifest is stable across runs.
+    """
+    cells: List[Tuple[str, str, str]] = []
+    for task_id, td in TASK_REGISTRY.items():
+        if td.mechanism != mechanism:
+            continue
+        for env_type in VALID_TASK_ENV_COMBOS.get(td.task_type, []):
+            if is_risky_env(env_type) and is_valid_combo(task_id, env_type):
+                cells.append((task_id, td.task_type, env_type))
+    return cells
 
 
 # ───────────────────────────────────────────────────────────────────
