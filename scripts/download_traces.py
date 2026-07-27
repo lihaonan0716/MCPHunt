@@ -83,7 +83,7 @@ def download_all(main_only: bool = False) -> None:
         return
 
     # Download mitigation traces
-    print("\n==> Mitigation traces (3 models x 4 levels, 2885 traces)")
+    print("\n==> Mitigation traces (3 models x 4 levels, 2706 traces)")
     mitig_dir = RESULTS_DIR / "mitigation_traces"
     for dirname in MITIGATION_DIRS:
         target_dir = mitig_dir / dirname

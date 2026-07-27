@@ -135,7 +135,7 @@ def build_metadata() -> Dict[str, Any]:
             "Agent execution traces measuring cross-boundary data propagation "
             "in multi-server MCP agents. Contains 3,615 main-benchmark traces "
             "from 5 models across 147 tasks and 9 mechanism families, plus "
-            "2,885 mitigation-study traces. Each trace includes the full "
+            "2,706 mitigation-study traces. Each trace includes the full "
             "tool-call event log, 11 tiered binary risk signals plus one "
             "diagnostic signal computed by canary-based taint tracking, CRS "
             "stratification labels, and outcome classification."

@@ -59,7 +59,7 @@ cross-boundary data propagation in multi-server MCP agents.
 
 - **`main/`** — 3,615 traces from 5 models across 147 tasks and 7 environment
   variants (risky_v1/v2/v3, benign, hard_neg_v1/v2/v3). One JSON file per model.
-- **`mitigation/`** — 2,885 traces from the prompt-mitigation study (M0--M3
+- **`mitigation/`** — 2,706 traces from the prompt-mitigation study (M0--M3
   levels) across 3 models.
 - **`meta/`** — Aggregated results and regression data for statistical analysis.
 
