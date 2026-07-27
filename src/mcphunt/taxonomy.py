@@ -903,6 +903,114 @@ def is_crs_task(task_id: str) -> bool:
 
 
 # ───────────────────────────────────────────────────────────────────
+# Grounding referents
+#
+# Two static maps tie each abstract construct in the benchmark to a
+# concrete, human-readable referent so a reader can ground "what does
+# this mechanism/family actually mean" without reverse-engineering the
+# task list.  These are source-of-truth domain descriptions, NOT
+# trace-derived numbers: nothing here is a reported result, and the
+# generator derives only the *counts* (9 mechanisms, 43 families).
+#
+# MECHANISM_INCIDENT_GROUNDING: one incident-class referent per risk
+# mechanism.  ``benign_control`` is a negative control, not an incident
+# class, so it is intentionally absent (never enters the 9-mechanism
+# count).  External weakness identifiers are deliberately NOT embedded
+# in these referent strings; any citation/validation mapping is decided
+# separately at the paper/citation gate, not welded into this artifact.
+# ───────────────────────────────────────────────────────────────────
+
+MECHANISM_INCIDENT_GROUNDING: Dict[str, str] = {
+    "file_to_file": (
+        "Credentials carried into a new location as a structural side "
+        "effect of a file copy / archive / migration operation."
+    ),
+    "file_to_doc": (
+        "Secrets transcribed from config/code into human-facing docs, "
+        "reports, or onboarding guides."
+    ),
+    "db_to_artifact": (
+        "Sensitive columns exported out of a database into files or a "
+        "knowledge graph during a reporting/export task."
+    ),
+    "config_to_script": (
+        "Secrets hard-coded into executable artifacts (deploy scripts, "
+        "Dockerfiles, CI definitions)."
+    ),
+    "forced_multi_hop": (
+        "Relay-style exposure along a structurally required cross-system "
+        "A->B->C data flow."
+    ),
+    "sensitive_to_shell": (
+        "Secrets placed into shell commands or command arguments during "
+        "authenticated service, deployment, or verification tasks."
+    ),
+    "browser_to_local": (
+        "Authenticated web content persisted into local files, DB, or "
+        "knowledge graph during browser-to-local export or indexing tasks."
+    ),
+    "git_history_leak": (
+        "Historical secrets in version-control history surfaced via a "
+        "review or audit task."
+    ),
+    "indirect_exposure": (
+        "Secrets incidentally encountered and propagated during an "
+        "otherwise legitimate development task."
+    ),
+}
+
+
+# FAMILY_WORKFLOW_GROUNDING: one enterprise-workflow referent per distinct
+# scenario ``family`` in TASK_REGISTRY (risk, hard-negative, and benign
+# families alike).  Internal referents only; no external citation implied.
+FAMILY_WORKFLOW_GROUNDING: Dict[str, str] = {
+    "analysis": "Ad-hoc file/data analysis using shell or code tools.",
+    "analytics": "Product/usage analytics aggregation and dashboarding.",
+    "audit_logging": "Recording an audit trail of system or user actions.",
+    "backup_ops": "Backup verification or operational backup handling over project/data assets.",
+    "backup_recovery": "Disaster-recovery backup and restore of a workspace.",
+    "build_automation": "Automated build pipeline producing deployable artifacts.",
+    "caching": "Populating or refreshing a cache/index layer.",
+    "ci_cd": "Continuous integration / delivery pipeline configuration.",
+    "code_review": "Reviewing source changes for quality and security.",
+    "compliance_audit": "Assessing systems/records against a compliance standard.",
+    "compliance_reporting": "Producing a compliance status report for auditors.",
+    "containerization": "Packaging an app into container images for deployment.",
+    "data_migration": "Moving datasets between stores or schema versions.",
+    "data_ops": "Executing operational data pipelines over project or service data.",
+    "data_reconciliation": "Reconciling records across two data sources.",
+    "data_sync": "Keeping two systems' data in sync.",
+    "database_ops": "Basic database table/setup operations.",
+    "deployment": "Deploying an application/service to an environment.",
+    "development": "General feature development on the codebase.",
+    "documentation": "Authoring or updating project documentation.",
+    "environment_setup": "Provisioning/configuring a dev or runtime environment.",
+    "file_ops": "General filesystem operations on project assets.",
+    "incident_response": "Responding to and remediating an operational incident.",
+    "indexing": "Building a search/knowledge index over content.",
+    "infrastructure": "Managing infrastructure resources and config.",
+    "integration": "Wiring together services or third-party systems.",
+    "knowledge_management": "Curating a knowledge base or knowledge graph.",
+    "knowledge_transfer": "Handing off project knowledge to another party.",
+    "logging": "Writing timestamped or operational log records.",
+    "maintenance": "Routine upkeep and cleanup of a workspace/system.",
+    "monitoring": "Setting up runtime monitoring of a service.",
+    "observability": "Instrumenting a system for metrics/traces/logs.",
+    "onboarding": "Bringing a new team member/service up to speed.",
+    "planning": "Sprint/project planning and task organization.",
+    "project_migration": "Migrating a project/repository between hosts/workspaces.",
+    "reporting": "Generating a status/business report from data.",
+    "security_audit": "Auditing a system for security posture/vulnerabilities.",
+    "security_ops": "Operational security tasks (secrets, access, hardening).",
+    "system_info": "Gathering system/environment information.",
+    "testing": "Authoring or running tests over the codebase.",
+    "tooling": "Building or configuring developer tooling.",
+    "verification": "Verifying dependencies, connectivity, or runtime preconditions.",
+    "web_scraping": "Collecting content from web sources into local stores.",
+}
+
+
+# ───────────────────────────────────────────────────────────────────
 # Validation helpers
 # ───────────────────────────────────────────────────────────────────
 
@@ -973,8 +1081,46 @@ def validate_task_registry() -> None:
         raise ValueError(f"Expected {expected_total} total tasks, found {total}")
 
 
+def validate_grounding_completeness() -> None:
+    """Assert grounding maps cover exactly their constructs, no more, no less.
+
+    MECHANISM_INCIDENT_GROUNDING must key on exactly the risk mechanisms
+    (``benign_control`` excluded — it is a negative control, not an incident
+    class).  FAMILY_WORKFLOW_GROUNDING must key on exactly the distinct
+    ``family`` values present in TASK_REGISTRY.  Both directions are checked so
+    that adding a mechanism/family or an orphan grounding entry fails loudly.
+    """
+    mech_keys = set(MECHANISM_INCIDENT_GROUNDING)
+    expected_mechs = set(RISK_MECHANISMS)
+    if mech_keys != expected_mechs:
+        missing = expected_mechs - mech_keys
+        extra = mech_keys - expected_mechs
+        raise ValueError(
+            f"MECHANISM_INCIDENT_GROUNDING mismatch: missing={sorted(missing)}, "
+            f"extra={sorted(extra)}"
+        )
+    if "benign_control" in mech_keys:
+        raise ValueError("benign_control must not appear in MECHANISM_INCIDENT_GROUNDING")
+
+    family_keys = set(FAMILY_WORKFLOW_GROUNDING)
+    expected_families = {td.family for td in TASK_REGISTRY.values()}
+    if family_keys != expected_families:
+        missing = expected_families - family_keys
+        extra = family_keys - expected_families
+        raise ValueError(
+            f"FAMILY_WORKFLOW_GROUNDING mismatch: missing={sorted(missing)}, "
+            f"extra={sorted(extra)}"
+        )
+
+    # Referent strings must be non-empty (a blank grounding is a silent gap).
+    for key, text in {**MECHANISM_INCIDENT_GROUNDING, **FAMILY_WORKFLOW_GROUNDING}.items():
+        if not text or not text.strip():
+            raise ValueError(f"Grounding referent for {key!r} is empty")
+
+
 validate_task_mechanisms()
 validate_task_registry()
+validate_grounding_completeness()
 
 
 # ───────────────────────────────────────────────────────────────────

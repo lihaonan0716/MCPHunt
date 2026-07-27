@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from mcphunt.taxonomy import (
     TASK_REGISTRY, RISK_TASKS, HN_TASKS, BENIGN_TASKS, CRS_TASKS,
+    MECHANISM_INCIDENT_GROUNDING, FAMILY_WORKFLOW_GROUNDING,
 )
 
 REPO = Path(__file__).resolve().parents[1]
@@ -141,6 +142,64 @@ def main() -> None:
     for i, slug in enumerate(non_primary):
         letter = chr(ord("B") + i)
         cmd(f"model{letter}", MODEL_SLUGS[slug])
+
+    lines.append("")
+
+    # ── Grounding mapping counts (registry-derived; static, trace-independent) ──
+    # Every number here is re-derived from TASK_REGISTRY / the grounding maps.
+    # Cohorts are kept explicit per the plan's naming rule (risk vs HN vs benign
+    # vs total; per-mechanism vs per-family vs global) so the rebuttal text can
+    # never conflate the 12 / 3 / 43 / 108 / 27 / 147 figures.
+    lines.append("% === Grounding mapping counts (registry-derived) ===")
+    _reg = TASK_REGISTRY
+    _risk_tasks = [t for t in _reg.values() if t.task_type == "risk"]
+    _hn_tasks = [t for t in _reg.values() if t.task_type == "hard_negative"]
+    _benign_tasks = [t for t in _reg.values() if t.task_type == "benign"]
+    _risk_mechs = sorted({t.mechanism for t in _risk_tasks})
+    _families = sorted({t.family for t in _reg.values()})
+
+    # Per-mechanism task split (uniform across the 9 risk mechanisms: 12 risk + 3 HN).
+    _risk_per_mech = {m: sum(1 for t in _risk_tasks if t.mechanism == m) for m in _risk_mechs}
+    _hn_per_mech = {m: sum(1 for t in _hn_tasks if t.mechanism == m) for m in _risk_mechs}
+    _uniform_risk = sorted(set(_risk_per_mech.values()))
+    _uniform_hn = sorted(set(_hn_per_mech.values()))
+
+    cmd("groundingMechanismCount", str(len(MECHANISM_INCIDENT_GROUNDING)),
+        "risk mechanisms with an incident-class referent (benign_control excluded)")
+    cmd("groundingFamilyCount", str(len(FAMILY_WORKFLOW_GROUNDING)),
+        "distinct scenario families with a workflow referent")
+    if len(_uniform_risk) == 1:
+        cmd("groundingRiskTasksPerMechanism", str(_uniform_risk[0]))
+    else:
+        cmd("groundingRiskTasksPerMechanism", "varies",
+            f"non-uniform risk tasks/mechanism: {_risk_per_mech}")
+    if len(_uniform_hn) == 1:
+        cmd("groundingHNTasksPerMechanism", str(_uniform_hn[0]))
+    else:
+        cmd("groundingHNTasksPerMechanism", "varies",
+            f"non-uniform HN tasks/mechanism: {_hn_per_mech}")
+    cmd("groundingRiskTaskTotal", str(len(_risk_tasks)))
+    cmd("groundingHNTaskTotal", str(len(_hn_tasks)))
+    cmd("groundingBenignTaskTotal", str(len(_benign_tasks)))
+    cmd("groundingTaskTotal", str(len(_reg)))
+
+    # Per-family task counts (denominator = tasks registered to that family).
+    for fam in _families:
+        n_fam = sum(1 for t in _reg.values() if t.family == fam)
+        tag = fam.title().replace("_", "")
+        cmd(f"groundingFamily{tag}Tasks", str(n_fam),
+            f"registered tasks in family '{fam}'")
+
+    # Consistency guard: derived cohorts must sum to the registry total.
+    assert len(_risk_tasks) + len(_hn_tasks) + len(_benign_tasks) == len(_reg), (
+        "grounding cohort counts do not sum to the registry total"
+    )
+    assert len(MECHANISM_INCIDENT_GROUNDING) == len(_risk_mechs), (
+        "grounding mechanism count != number of risk mechanisms"
+    )
+    assert len(FAMILY_WORKFLOW_GROUNDING) == len(_families), (
+        "grounding family count != number of distinct registry families"
+    )
 
     lines.append("")
 
