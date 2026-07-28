@@ -244,7 +244,7 @@ def check_huggingface_staging(result: CheckResult) -> None:
             text = path.read_text(encoding="utf-8")
             if STALE_NAME in text:
                 result.error(f"stale name reference in {sub_file}")
-    for subdir in ("main", "mitigation", "meta"):
+    for subdir in ("main", "mitigation", "live_guard_defense", "browser_replication", "meta"):
         path = staging / subdir
         if path.is_dir() and any(path.iterdir()):
             result.passed(f"HF staging directory: {subdir}/ ({sum(1 for _ in path.glob('*'))} files)")

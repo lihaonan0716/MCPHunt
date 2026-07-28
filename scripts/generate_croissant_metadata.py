@@ -23,7 +23,7 @@ from typing import Any, Dict, List
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT_DIR = REPO_ROOT / "artifacts" / "release"
-DATASET_VERSION = "1.0.0"
+DATASET_VERSION = "1.1.0"
 PUBLICATION_DATE = "2026-05-06"
 
 CRS_AUDIT_DIR = DEFAULT_OUT_DIR / "crs_audit"
@@ -156,12 +156,53 @@ def build_metadata() -> Dict[str, Any]:
             "encodingFormat": "application/json",
         })
 
+    # Live-guard defense arm (DeepSeek-only, paired with main/deepseek_v4_flash.json).
+    distribution.append({
+        "@type": "cr:FileObject",
+        "@id": "live_guard_defense_deepseek_v4_flash",
+        "name": "live_guard_defense/deepseek_v4_flash.json",
+        "contentUrl": "live_guard_defense/deepseek_v4_flash.json",
+        "encodingFormat": "application/json",
+    })
+
+    # Browser-mechanism cross-arm replication (DeepSeek-only, 39 baseline + 39 defense).
+    distribution.append({
+        "@type": "cr:FileObject",
+        "@id": "browser_replication_deepseek_baseline",
+        "name": "browser_replication/deepseek_v4_flash_baseline.json",
+        "contentUrl": "browser_replication/deepseek_v4_flash_baseline.json",
+        "encodingFormat": "application/json",
+    })
+    distribution.append({
+        "@type": "cr:FileObject",
+        "@id": "browser_replication_deepseek_defense",
+        "name": "browser_replication/deepseek_v4_flash_defense.json",
+        "contentUrl": "browser_replication/deepseek_v4_flash_defense.json",
+        "encodingFormat": "application/json",
+    })
+
     distribution.append({
         "@type": "cr:FileObject",
         "@id": "meta_regression",
         "name": "meta/regression_data.csv",
         "contentUrl": "meta/regression_data.csv",
         "encodingFormat": "text/csv",
+    })
+
+    # Paired-analysis summaries for the runtime taint-guard evaluation.
+    distribution.append({
+        "@type": "cr:FileObject",
+        "@id": "meta_paired_live_guard_analysis",
+        "name": "meta/paired_live_guard_analysis.json",
+        "contentUrl": "meta/paired_live_guard_analysis.json",
+        "encodingFormat": "application/json",
+    })
+    distribution.append({
+        "@type": "cr:FileObject",
+        "@id": "meta_live_guard_deepseek_v4_flash_paired",
+        "name": "meta/live_guard_deepseek_v4_flash_paired.json",
+        "contentUrl": "meta/live_guard_deepseek_v4_flash_paired.json",
+        "encodingFormat": "application/json",
     })
 
     trace_fields = [
@@ -193,9 +234,14 @@ def build_metadata() -> Dict[str, Any]:
             "Agent execution traces measuring cross-boundary data propagation "
             "in multi-server MCP agents. Contains 3,615 main-benchmark traces "
             "from 5 models across 147 tasks and 9 mechanism families, plus "
-            "2,706 mitigation-study traces. Each trace includes the full "
-            "tool-call event log, 11 tiered binary risk signals plus one "
-            "diagnostic signal computed by canary-based taint tracking, CRS "
+            "2,706 mitigation-study traces. A DeepSeek-V4-Flash runtime "
+            "taint-guard defense arm ships 387 additional paired traces "
+            "(live_guard_defense/) and a browser-mechanism cross-arm "
+            "replication ships 78 additional traces "
+            "(browser_replication/: 39 baseline + 39 defense) for a total of "
+            "6,786 released traces. Each trace includes the full tool-call "
+            "event log, 11 tiered binary risk signals plus one diagnostic "
+            "signal computed by canary-based taint tracking, CRS "
             "stratification labels, and outcome classification."
         ),
         "keywords": [
