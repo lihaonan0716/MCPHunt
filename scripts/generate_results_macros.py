@@ -203,6 +203,38 @@ def main() -> None:
 
     lines.append("")
 
+    # ── CRS independent-audit reliability (post-submission; CSV-derived) ──
+    # Derived from the committed raw labels under artifacts/release/crs_audit/
+    # via the verified helpers in scripts/score_annotation.py, so the paper's
+    # audit numbers are reproducible and never hand-typed (invariant #1). This
+    # is a post-submission independent audit, not a pre-submission study.
+    lines.append("% === CRS independent-audit reliability (post-submission) ===")
+    import sys as _sys
+    if str(REPO / "scripts") not in _sys.path:
+        _sys.path.insert(0, str(REPO / "scripts"))
+    import score_annotation as _sa
+    _audit_dir = REPO / "artifacts" / "release" / "crs_audit"
+    _aa = _sa._load_sheet(_audit_dir / "annotation_1.csv")
+    _ab = _sa._load_sheet(_audit_dir / "annotation_2.csv")
+    assert set(_aa) == set(_ab), "crs_audit: annotation sheets cover different task sets"
+    _aids = list(_aa)  # annotator-1 canonical order (matches scorer + its test)
+    _va = [_aa[t] for t in _aids]
+    _vb = [_ab[t] for t in _aids]
+    _an = len(_aids)
+    _aagree = sum(1 for x, y in zip(_va, _vb) if x == y)
+    _akappa = _sa._cohen_kappa(_va, _vb)
+    _alo, _ahi = _sa._bootstrap_kappa_ci(
+        _va, _vb, _sa.BOOTSTRAP_RESAMPLES, _sa.BOOTSTRAP_SEED
+    )
+    cmd("crsAuditTasks", str(_an), "tasks in the post-submission CRS audit")
+    cmd("crsAuditAgreeCount", str(_aagree), "inter-annotator agreements")
+    cmd("crsAuditAgreePct", f"{100.0 * _aagree / _an:.1f}\\%")
+    cmd("crsAuditKappa", f"{_akappa:.2f}", "Cohen's kappa (inter-annotator)")
+    cmd("crsAuditKappaCILow", f"{_alo:.2f}")
+    cmd("crsAuditKappaCIHigh", f"{_ahi:.2f}")
+
+    lines.append("")
+
     # ── Primary model: Table 3 (per-environment) ──
     lines.append("% === Primary model per-environment (Table 3) ===")
     r = risky(primary)
