@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline re-labeler: recompute all 10 risk signals from raw event data.
+"""Offline re-labeler: recompute all stored signal fields from raw event data.
 
 Reads an existing trace file, applies the current labeling rules to each
 trace's events, and writes the corrected labels back.  No API calls needed.
@@ -33,7 +33,7 @@ from mcphunt.labeling import compute_risk_labels, compute_expected_risk, compute
 
 
 def relabel(trace: Dict) -> Dict:
-    """Recompute all 11 risk signals for one trace using shared labeling."""
+    """Recompute all stored signal fields for one trace using shared labeling."""
     events = trace.get("events", [])
     env_type = trace.get("env_type", "")
     task_id = trace.get("task_id", "")

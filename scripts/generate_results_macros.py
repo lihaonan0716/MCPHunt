@@ -23,11 +23,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from mcphunt.taxonomy import (
     TASK_REGISTRY, RISK_TASKS, HN_TASKS, BENIGN_TASKS, CRS_TASKS,
+    MECHANISM_INCIDENT_GROUNDING, FAMILY_WORKFLOW_GROUNDING,
 )
+from mcphunt.deviance import compute_deviance_shares
 
 REPO = Path(__file__).resolve().parents[1]
 TRACES_DIR = REPO / "results" / "agent_traces"
 MITIG_DIR = REPO / "results" / "mitigation_traces"
+B3_REPLICATION_DIR = REPO / "results" / "agent_traces_b3_replication"
+REGRESSION_DATA = REPO / "results" / "regression_data.csv"
 OUT = REPO / "paper" / "results_macros.tex"
 
 PRIMARY_SLUG = "gpt_5_4"
@@ -141,6 +145,122 @@ def main() -> None:
     for i, slug in enumerate(non_primary):
         letter = chr(ord("B") + i)
         cmd(f"model{letter}", MODEL_SLUGS[slug])
+
+    lines.append("")
+
+    # ── Grounding mapping counts (registry-derived; static, trace-independent) ──
+    # Every number here is re-derived from TASK_REGISTRY / the grounding maps.
+    # Cohorts are kept explicit per the plan's naming rule (risk vs HN vs benign
+    # vs total; per-mechanism vs per-family vs global) so the rebuttal text can
+    # never conflate the 12 / 3 / 43 / 108 / 27 / 147 figures.
+    lines.append("% === Grounding mapping counts (registry-derived) ===")
+    _reg = TASK_REGISTRY
+    _risk_tasks = [t for t in _reg.values() if t.task_type == "risk"]
+    _hn_tasks = [t for t in _reg.values() if t.task_type == "hard_negative"]
+    _benign_tasks = [t for t in _reg.values() if t.task_type == "benign"]
+    _risk_mechs = sorted({t.mechanism for t in _risk_tasks})
+    _families = sorted({t.family for t in _reg.values()})
+
+    # Per-mechanism task split (uniform across the 9 risk mechanisms: 12 risk + 3 HN).
+    _risk_per_mech = {m: sum(1 for t in _risk_tasks if t.mechanism == m) for m in _risk_mechs}
+    _hn_per_mech = {m: sum(1 for t in _hn_tasks if t.mechanism == m) for m in _risk_mechs}
+    _uniform_risk = sorted(set(_risk_per_mech.values()))
+    _uniform_hn = sorted(set(_hn_per_mech.values()))
+
+    cmd("groundingMechanismCount", str(len(MECHANISM_INCIDENT_GROUNDING)),
+        "risk mechanisms with an incident-class referent (benign_control excluded)")
+    cmd("groundingFamilyCount", str(len(FAMILY_WORKFLOW_GROUNDING)),
+        "distinct scenario families with a workflow referent")
+    if len(_uniform_risk) == 1:
+        cmd("groundingRiskTasksPerMechanism", str(_uniform_risk[0]))
+    else:
+        cmd("groundingRiskTasksPerMechanism", "varies",
+            f"non-uniform risk tasks/mechanism: {_risk_per_mech}")
+    if len(_uniform_hn) == 1:
+        cmd("groundingHNTasksPerMechanism", str(_uniform_hn[0]))
+    else:
+        cmd("groundingHNTasksPerMechanism", "varies",
+            f"non-uniform HN tasks/mechanism: {_hn_per_mech}")
+    cmd("groundingRiskTaskTotal", str(len(_risk_tasks)))
+    cmd("groundingHNTaskTotal", str(len(_hn_tasks)))
+    cmd("groundingBenignTaskTotal", str(len(_benign_tasks)))
+    cmd("groundingTaskTotal", str(len(_reg)))
+
+    # Per-family task counts (denominator = tasks registered to that family).
+    for fam in _families:
+        n_fam = sum(1 for t in _reg.values() if t.family == fam)
+        tag = fam.title().replace("_", "")
+        cmd(f"groundingFamily{tag}Tasks", str(n_fam),
+            f"registered tasks in family '{fam}'")
+
+    # Consistency guard: derived cohorts must sum to the registry total.
+    assert len(_risk_tasks) + len(_hn_tasks) + len(_benign_tasks) == len(_reg), (
+        "grounding cohort counts do not sum to the registry total"
+    )
+    assert len(MECHANISM_INCIDENT_GROUNDING) == len(_risk_mechs), (
+        "grounding mechanism count != number of risk mechanisms"
+    )
+    assert len(FAMILY_WORKFLOW_GROUNDING) == len(_families), (
+        "grounding family count != number of distinct registry families"
+    )
+
+    lines.append("")
+
+    # ── CRS independent-audit reliability (post-submission; CSV-derived) ──
+    # Derived from the committed raw labels under artifacts/release/crs_audit/
+    # via the verified helpers in scripts/score_annotation.py, so the paper's
+    # audit numbers are reproducible and never hand-typed (invariant #1). This
+    # is a post-submission independent audit, not a pre-submission study.
+    lines.append("% === CRS independent-audit reliability (post-submission) ===")
+    import sys as _sys
+    if str(REPO / "scripts") not in _sys.path:
+        _sys.path.insert(0, str(REPO / "scripts"))
+    import score_annotation as _sa
+    _audit_dir = REPO / "artifacts" / "release" / "crs_audit"
+    _aa = _sa._load_sheet(_audit_dir / "annotation_1.csv")
+    _ab = _sa._load_sheet(_audit_dir / "annotation_2.csv")
+    assert set(_aa) == set(_ab), "crs_audit: annotation sheets cover different task sets"
+    _aids = list(_aa)  # annotator-1 canonical order (matches scorer + its test)
+    _va = [_aa[t] for t in _aids]
+    _vb = [_ab[t] for t in _aids]
+    _an = len(_aids)
+    _aagree = sum(1 for x, y in zip(_va, _vb) if x == y)
+    _akappa = _sa._cohen_kappa(_va, _vb)
+    _alo, _ahi = _sa._bootstrap_kappa_ci(
+        _va, _vb, _sa.BOOTSTRAP_RESAMPLES, _sa.BOOTSTRAP_SEED
+    )
+    cmd("crsAuditTasks", str(_an), "tasks in the post-submission CRS audit")
+    cmd("crsAuditAgreeCount", str(_aagree), "inter-annotator agreements")
+    cmd("crsAuditAgreePct", f"{100.0 * _aagree / _an:.1f}\\%")
+    cmd("crsAuditKappa", f"{_akappa:.2f}", "Cohen's kappa (inter-annotator)")
+    cmd("crsAuditKappaCILow", f"{_alo:.2f}")
+    cmd("crsAuditKappaCIHigh", f"{_ahi:.2f}")
+
+    lines.append("")
+
+    # ── Deviance-share decomposition (appendix Regression Analysis) ──
+    # McFadden pseudo-R² for three single-predictor / full logistic models on the
+    # non-CRS subset of results/regression_data.csv (n=1,440). Shares are
+    # relative to the FULL-model pseudo-R² (appendix.tex:596 verbatim: "share of
+    # the full-model pseudo-R^2 improvement"). Not a causal variance
+    # decomposition; the two shares do NOT sum to 100 by construction — the
+    # remainder is shared variance / interaction / model-implicit CRS influence.
+    lines.append("% === Deviance-share decomposition (non-CRS subset, n=1,440) ===")
+    _ds = compute_deviance_shares(REGRESSION_DATA)
+    # Hard sanity: shape sensibly (denominator = full-model R²; two singles
+    # must not exceed the full or be nonsensical); if this trips, the schema /
+    # subset / reference category has drifted, do NOT paper-over.
+    assert 0.0 < _ds["mech_share_pct"] <= 100.0, _ds
+    assert 0.0 < _ds["model_share_pct"] <= 100.0, _ds
+    assert 60.0 <= _ds["mech_share_pct"] + _ds["model_share_pct"] <= 100.0, _ds
+    cmd("mechDevianceShare", f"{_ds['mech_share_pct']:.1f}",
+        "% of full-model pseudo-R^2 attributable to mechanism (single-predictor)")
+    cmd("modelDevianceShare", f"{_ds['model_share_pct']:.1f}",
+        "% of full-model pseudo-R^2 attributable to model (single-predictor)")
+    cmd("mechPseudoR", f"{_ds['mech_pseudo_r2']:.4f}")
+    cmd("modelPseudoR", f"{_ds['model_pseudo_r2']:.4f}")
+    cmd("fullPseudoR", f"{_ds['full_pseudo_r2']:.4f}")
+    cmd("devianceNonCrsN", str(_ds["n_rows_used"]))
 
     lines.append("")
 
@@ -369,6 +489,35 @@ def main() -> None:
     cmd("numMitigModels", str(mitig_model_count))
     cmd("totalTracesMitigation", fmt_num(total_mitig))
     cmd("totalTracesAll", fmt_num(total_main + total_mitig))
+    cmd("totalTracesReleased", fmt_num(total_main + total_mitig),
+        "canonical alias for released trace total (main + mitigation)")
+
+    # ── Extension traces (executed but not in the HF release bundle at v1) ──
+    # Counted directly from the raw trace files so the rebuttal / paper can
+    # cite the executed-experiments completeness figure without hand-typing.
+    live_guard_defense_path = (
+        TRACES_DIR / "deepseek_v4_flash" / "agent_traces_deft.json"
+    )
+    total_live_guard_defense = 0
+    if live_guard_defense_path.exists():
+        _lg = json.loads(live_guard_defense_path.read_text(encoding="utf-8"))
+        total_live_guard_defense = sum(
+            1 for t in _lg["traces"] if t.get("defense") == "taint_tracking"
+        )
+    cmd("totalTracesLiveGuardDefenseArm", str(total_live_guard_defense),
+        "DeepSeek live-guard defense-arm traces (defense=taint_tracking)")
+
+    total_b3 = 0
+    if B3_REPLICATION_DIR.exists():
+        for f in sorted(B3_REPLICATION_DIR.rglob("agent_traces_browser*.json")):
+            _b3 = json.loads(f.read_text(encoding="utf-8"))
+            total_b3 += len(_b3["traces"])
+    cmd("totalTracesBrowserReplication", str(total_b3),
+        "B3 same-day browser replication (baseline + defense)")
+
+    cmd("totalTracesExecuted",
+        fmt_num(total_main + total_mitig + total_live_guard_defense + total_b3),
+        "all executed traces (released + live-guard defense + B3)")
 
     # Convenience aliases for primary model mitigation (used most in paper)
     cmd("mitigBaseline", f"\\mitigPrimaryMzeroProp\\%")

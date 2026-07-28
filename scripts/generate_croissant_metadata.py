@@ -17,13 +17,50 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT_DIR = REPO_ROOT / "artifacts" / "release"
-DATASET_VERSION = "1.0.0"
+DATASET_VERSION = "1.1.0"
 PUBLICATION_DATE = "2026-05-06"
+
+CRS_AUDIT_DIR = DEFAULT_OUT_DIR / "crs_audit"
+
+
+def _crs_audit_stats() -> Dict[str, Any]:
+    """Derive the CRS inter-annotator statistics from the committed raw labels.
+
+    Reuses the verified helpers in ``scripts/score_annotation.py`` so the numbers
+    written into the released metadata are computed from the raw labels, never
+    hand-typed (project invariant #1). Item order = annotator-1 row order, the
+    same canonical order the scorer and its pinning test use.
+    """
+    if str(REPO_ROOT / "scripts") not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import score_annotation as sa
+
+    a = sa._load_sheet(CRS_AUDIT_DIR / "annotation_1.csv")
+    b = sa._load_sheet(CRS_AUDIT_DIR / "annotation_2.csv")
+    if set(a) != set(b):
+        raise SystemExit("crs_audit: annotation sheets cover different task sets.")
+    ids = list(a)  # annotator-1 canonical order
+    va = [a[t] for t in ids]
+    vb = [b[t] for t in ids]
+    n = len(ids)
+    agree = sum(1 for x, y in zip(va, vb) if x == y)
+    kappa = sa._cohen_kappa(va, vb)
+    lo, hi = sa._bootstrap_kappa_ci(va, vb, sa.BOOTSTRAP_RESAMPLES, sa.BOOTSTRAP_SEED)
+    return {
+        "n": n,
+        "agree": agree,
+        "agree_pct": 100.0 * agree / n,
+        "kappa": kappa,
+        "ci_lo": lo,
+        "ci_hi": hi,
+        "resamples": sa.BOOTSTRAP_RESAMPLES,
+    }
 
 # TODO: Update after uploading to HuggingFace
 HF_DATASET_URL = "https://huggingface.co/datasets/mcphunt-benchmark/mcphunt-agent-traces"
@@ -88,6 +125,27 @@ def _field(field_id: str, description: str, dtype: str, json_path: str, parent: 
 
 
 def build_metadata() -> Dict[str, Any]:
+    crs = _crs_audit_stats()
+    crs_protocol = (
+        "The CRS labels were not crowdsourced. A post-submission independent "
+        "audit of the CRS labels was subsequently performed by two annotators "
+        "who are not authors, each labeling all "
+        f"{crs['n']} tasks blind to trace outcomes; the raw labels are "
+        "released under artifacts/release/crs_audit/ so the reliability "
+        "statistic is reproducible."
+    )
+    crs_analysis = (
+        "For the CRS stratification, a post-submission independent human audit "
+        "(two non-author annotators, blind to outcomes) yielded inter-annotator "
+        f"agreement of {crs['agree']}/{crs['n']} = {crs['agree_pct']:.1f}% and "
+        f"Cohen's kappa = {crs['kappa']:.2f} (percentile bootstrap 95% CI "
+        f"[{crs['ci_lo']:.2f}, {crs['ci_hi']:.2f}], {crs['resamples']} "
+        "resamples). This statistic reflects a post-submission audit, not a "
+        "pre-submission or pre-registered study; the raw labels "
+        "(artifacts/release/crs_audit/) and the scoring script "
+        "(scripts/score_annotation.py) make it fully reproducible, and "
+        "tests/test_crs_audit_reproducibility.py pins the reported values."
+    )
     distribution = []
     for model in MAIN_MODELS:
         distribution.append({
@@ -98,12 +156,53 @@ def build_metadata() -> Dict[str, Any]:
             "encodingFormat": "application/json",
         })
 
+    # Live-guard defense arm (DeepSeek-only, paired with main/deepseek_v4_flash.json).
+    distribution.append({
+        "@type": "cr:FileObject",
+        "@id": "live_guard_defense_deepseek_v4_flash",
+        "name": "live_guard_defense/deepseek_v4_flash.json",
+        "contentUrl": "live_guard_defense/deepseek_v4_flash.json",
+        "encodingFormat": "application/json",
+    })
+
+    # Browser-mechanism cross-arm replication (DeepSeek-only, 39 baseline + 39 defense).
+    distribution.append({
+        "@type": "cr:FileObject",
+        "@id": "browser_replication_deepseek_baseline",
+        "name": "browser_replication/deepseek_v4_flash_baseline.json",
+        "contentUrl": "browser_replication/deepseek_v4_flash_baseline.json",
+        "encodingFormat": "application/json",
+    })
+    distribution.append({
+        "@type": "cr:FileObject",
+        "@id": "browser_replication_deepseek_defense",
+        "name": "browser_replication/deepseek_v4_flash_defense.json",
+        "contentUrl": "browser_replication/deepseek_v4_flash_defense.json",
+        "encodingFormat": "application/json",
+    })
+
     distribution.append({
         "@type": "cr:FileObject",
         "@id": "meta_regression",
         "name": "meta/regression_data.csv",
         "contentUrl": "meta/regression_data.csv",
         "encodingFormat": "text/csv",
+    })
+
+    # Paired-analysis summaries for the runtime taint-guard evaluation.
+    distribution.append({
+        "@type": "cr:FileObject",
+        "@id": "meta_paired_live_guard_analysis",
+        "name": "meta/paired_live_guard_analysis.json",
+        "contentUrl": "meta/paired_live_guard_analysis.json",
+        "encodingFormat": "application/json",
+    })
+    distribution.append({
+        "@type": "cr:FileObject",
+        "@id": "meta_live_guard_deepseek_v4_flash_paired",
+        "name": "meta/live_guard_deepseek_v4_flash_paired.json",
+        "contentUrl": "meta/live_guard_deepseek_v4_flash_paired.json",
+        "encodingFormat": "application/json",
     })
 
     trace_fields = [
@@ -135,10 +234,15 @@ def build_metadata() -> Dict[str, Any]:
             "Agent execution traces measuring cross-boundary data propagation "
             "in multi-server MCP agents. Contains 3,615 main-benchmark traces "
             "from 5 models across 147 tasks and 9 mechanism families, plus "
-            "2,885 mitigation-study traces. Each trace includes the full "
-            "tool-call event log, 11 binary risk signals computed by "
-            "canary-based taint tracking, CRS stratification labels, and "
-            "outcome classification."
+            "2,706 mitigation-study traces. A DeepSeek-V4-Flash runtime "
+            "taint-guard defense arm ships 387 additional paired traces "
+            "(live_guard_defense/) and a browser-mechanism cross-arm "
+            "replication ships 78 additional traces "
+            "(browser_replication/: 39 baseline + 39 defense) for a total of "
+            "6,786 released traces. Each trace includes the full tool-call "
+            "event log, 11 tiered binary risk signals plus one diagnostic "
+            "signal computed by canary-based taint tracking, CRS "
+            "stratification labels, and outcome classification."
         ),
         "keywords": [
             "MCP", "Model Context Protocol", "agent safety",
@@ -186,18 +290,20 @@ def build_metadata() -> Dict[str, Any]:
         "rai:dataCollectionTimeframe": "2026-Q1 to 2026-Q2",
         "rai:dataAnnotationProtocol": (
             "Risk labels are computed deterministically by the canary-based "
-            "labeling pipeline (src/mcphunt/labeling.py). 11 binary risk "
-            "signals are evaluated per trace using per-canary causal tracking "
-            "with temporal ordering. CRS stratification labels were assigned "
-            "before experiments by two annotators (Cohen's kappa = 0.89). "
-            "No crowdsourcing is involved."
+            "labeling pipeline (src/mcphunt/labeling.py). The pipeline evaluates "
+            "11 tiered binary risk signals plus one diagnostic signal per trace "
+            "using per-canary causal tracking with temporal ordering. CRS "
+            "stratification labels are frozen task metadata assigned "
+            "during task construction using a fixed rubric and encoded as "
+            "completion_requires_secret in src/mcphunt/taxonomy.py, frozen "
+            "before experiments. " + crs_protocol
         ),
         "rai:dataAnnotationPlatform": "Automated pipeline (labeling.py)",
         "rai:dataAnnotationAnalysis": (
             "The labeling pipeline is deterministic and reproducible. "
             "Mutation testing (test_labeling_integrity.py) validates that "
             "injected canaries are detected and safe traces produce no "
-            "false positives. CRS inter-annotator agreement: 97.3%."
+            "false positives. " + crs_analysis
         ),
         "rai:dataPreprocessingProtocol": [
             "Traces are sanitized to remove local usernames and paths (sanitize_traces.py).",

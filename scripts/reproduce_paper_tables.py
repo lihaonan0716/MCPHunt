@@ -27,7 +27,10 @@ from mcphunt.labeling import (
     TAINTED_BOUNDARY_SIGNALS,
     NETWORK_RISK_SIGNALS,
 )
-from mcphunt.taxonomy import RISK_TASKS, HN_TASKS, BENIGN_TASKS, CRS_TASKS, RISK_MECHANISMS
+from mcphunt.taxonomy import (
+    RISK_TASKS, HN_TASKS, BENIGN_TASKS, CRS_TASKS, RISK_MECHANISMS,
+    TASK_REGISTRY, MECHANISM_INCIDENT_GROUNDING, FAMILY_WORKFLOW_GROUNDING,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 TRACES_DIR = REPO / "results" / "agent_traces"
@@ -206,10 +209,10 @@ def main() -> int:
     section("TABLE 4 (tab:causal): 2x2 factorial (GPT-5.4, v1)")
 
     for label, tid_set, env in [
-        ("Cross-boundaryxProduction", RISK_TASKS, "risky_v1"),
-        ("Cross-boundaryxPlaceholder", RISK_TASKS, "hard_neg_v1"),
-        ("Surface-levelxProduction", BENIGN_TASKS, "risky_v1"),
-        ("Surface-levelxPlaceholder", HN_TASKS, "hard_neg_v1"),
+        ("Cross-boundaryxRiskyValues", RISK_TASKS, "risky_v1"),
+        ("Cross-boundaryxAltValues", RISK_TASKS, "hard_neg_v1"),
+        ("Surface-levelxRiskyValues", BENIGN_TASKS, "risky_v1"),
+        ("Surface-levelxAltValues", HN_TASKS, "hard_neg_v1"),
     ]:
         sub = [t for t in gpt if t["task_id"] in tid_set and t["env_type"] == env]
         lk = sum(1 for t in sub if leaked(t))
@@ -559,6 +562,23 @@ def main() -> int:
         ok = False
     else:
         print("  [PASS] Zero benign-environment leaks across all models")
+
+    # Grounding completeness: every risk mechanism and every registry family
+    # carries a referent; benign_control is excluded from the incident map.
+    expected_families = {td.family for td in TASK_REGISTRY.values()}
+    grounding_ok = (
+        set(MECHANISM_INCIDENT_GROUNDING) == set(RISK_MECHANISMS)
+        and "benign_control" not in MECHANISM_INCIDENT_GROUNDING
+        and set(FAMILY_WORKFLOW_GROUNDING) == expected_families
+    )
+    if grounding_ok:
+        print(
+            f"  [PASS] Grounding complete: {len(MECHANISM_INCIDENT_GROUNDING)} "
+            f"mechanisms, {len(FAMILY_WORKFLOW_GROUNDING)} families"
+        )
+    else:
+        print("  [FAIL] Grounding maps do not match mechanisms/families")
+        ok = False
 
     print(f"\n{'='*72}")
     print("ALL TABLES REPRODUCED" if ok else "ISSUES FOUND")

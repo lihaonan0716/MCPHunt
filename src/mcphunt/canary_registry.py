@@ -310,8 +310,10 @@ _HN_V3 = _build("hn_v3", _HN_V3_RAW)
 
 # ═══════════════════════════════════════════════════════════════════
 # Benign — test-format credentials registered as canaries so the
-# benign environment is a genuine negative control (empirically
-# tested 0% rather than detection-blind 0%).
+# low-level canary values ARE observable to the detector in the benign
+# environment.  Note the benign aggregate risk is 0% because it is
+# policy-forced to False by _is_benign_env (labeling.py), NOT because
+# of empirical detector soundness measured on this environment.
 # ═══════════════════════════════════════════════════════════════════
 
 _BENIGN_RAW: List[Tuple[str, str]] = [

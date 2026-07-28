@@ -29,8 +29,6 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-import openai
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
@@ -45,7 +43,15 @@ from mcphunt.taxonomy import (
     schema_header as _schema_header,
     is_valid_combo as _is_valid_combo,
     VALID_TASK_ENV_COMBOS as _VALID_COMBOS,
+    TASK_REGISTRY as _TASK_REGISTRY,
+    resolve_live_guard_slice as _resolve_live_guard_slice,
+    is_risky_env as _is_risky_env,
 )
+
+# Expected per-arm cell count for the browser_to_local paired live-guard slice.
+# The collector hard-asserts the resolved manifest matches this before any
+# paid/live call, so a forgotten filter can never silently bill a superset.
+_LIVE_GUARD_SLICE_SIZE = {"browser_to_local": 39}
 
 from mcphunt import workspace
 from mcphunt.workspace import (
@@ -96,6 +102,36 @@ async def run(args: argparse.Namespace) -> None:
     _prompts.TASKS = _build_tasks()
     _prompts.BROWSER_TASKS = _build_browser_tasks()
 
+    # Paired live-guard slice: two guardrails protect a paid run from a
+    # mis-sized manifest, and BOTH abort before the paid trace loop is entered:
+    #   (1) here, before the client/API is even built, on the resolver output;
+    #   (2) later, after the client is built but before any API call, on the
+    #       fully-filtered (task x env) schedule (catches wiring drift too).
+    # The atomic --live-guard-slice flag sets both predicates (mechanism +
+    # risky-env) at once; there is no way to request the mechanism without the
+    # risky restriction, which is the mis-size this guards against.
+    live_guard_mechanism = getattr(args, "live_guard_slice", None)
+    live_guard_cells: List[tuple] = []
+    if live_guard_mechanism:
+        live_guard_cells = _resolve_live_guard_slice(live_guard_mechanism)
+        n_cells = len(live_guard_cells)
+        log.info("Live-guard slice '%s': %d cells (paid cap x2 = %d)",
+                 live_guard_mechanism, n_cells, n_cells * 2)
+        expected = _LIVE_GUARD_SLICE_SIZE.get(live_guard_mechanism)
+        # Guardrail (1): refuse a paid/live launch whose resolved manifest does
+        # not match the approved size. dry-run is exempt (inspection only).
+        if not args.dry_run and expected is not None and n_cells != expected:
+            log.error(
+                "Live-guard slice '%s' resolved to %d cells, expected %d; "
+                "refusing to launch a paid run with a mis-sized manifest.",
+                live_guard_mechanism, n_cells, expected)
+            return
+        if not args.dry_run and expected is None:
+            log.error(
+                "Live-guard slice '%s' has no approved size; refusing paid run.",
+                live_guard_mechanism)
+            return
+
     # Validate bidirectional coverage between registry and builder
     registry_ids = set(_RISK_TASKS | _HN_TASKS | _BENIGN_TASKS)
     builder_ids = {t["id"] for t in _prompts.TASKS + _prompts.BROWSER_TASKS}
@@ -109,7 +145,12 @@ async def run(args: argparse.Namespace) -> None:
     wire = getattr(args, "wire_api", "chat")
     model_cfg = load_model_config(api_model)
 
-    if wire == "vertex":
+    client = None
+    if args.dry_run:
+        # dry-run is local inspection only: never build a provider client or
+        # require any live SDK (openai / anthropic-vertex).
+        pass
+    elif wire == "vertex":
         cred_path = workspace.REPO_ROOT / "configs" / "claude_credentials.json"
         if not cred_path.exists():
             log.error("Vertex credentials not found at %s", cred_path)
@@ -134,6 +175,7 @@ async def run(args: argparse.Namespace) -> None:
         if not api_key:
             log.error("No API key for model '%s'. Set in configs/api_keys.yaml, --api-key flag, or OPENAI_API_KEY env var.", api_model)
             return
+        import openai  # lazy: dry-run needs no SDK (mirrors vertex/anthropic lazy import)
         client = openai.OpenAI(api_key=api_key, base_url=api_base)
 
     suite = getattr(args, "suite", "base")
@@ -144,6 +186,12 @@ async def run(args: argparse.Namespace) -> None:
     combined = _prompts.TASKS + _prompts.BROWSER_TASKS
     registry_ids = set(_RISK_TASKS | _HN_TASKS | _BENIGN_TASKS)
     task_pool = [t for t in combined if t["id"] in registry_ids]
+    # Live-guard slice restricts the pool to the mechanism's task IDs. Env
+    # restriction is applied below; the existing is_valid_combo gate then drops
+    # non-risky/invalid pairs, so the surviving cells == resolve_live_guard_slice.
+    if live_guard_mechanism:
+        slice_task_ids = {c[0] for c in live_guard_cells}
+        task_pool = [t for t in task_pool if t["id"] in slice_task_ids]
     include_browser = any(t["id"] in browser_ids for t in task_pool)
     selected_envs = None
 
@@ -165,6 +213,11 @@ async def run(args: argparse.Namespace) -> None:
 
     tasks = task_pool
     active_envs = selected_envs or list(ENV_VARIANTS.keys())
+    if live_guard_mechanism:
+        # Restrict to the risky env variants present in the resolved slice; the
+        # is_valid_combo gate below then keeps exactly the slice's cells.
+        slice_envs = {c[2] for c in live_guard_cells}
+        active_envs = [e for e in active_envs if _is_risky_env(e) and e in slice_envs]
     for e in active_envs:
         if e not in ENV_VARIANTS:
             log.error("Unknown environment '%s'. Available: %s", e, list(ENV_VARIANTS.keys()))
@@ -189,6 +242,40 @@ async def run(args: argparse.Namespace) -> None:
     log.info("Config: %d tasks x %d envs, %d valid traces%s",
              len(tasks), len(active_envs), valid_count,
              "" if not all_combos else " (--all-combos: running all cross-products)")
+
+    if live_guard_mechanism:
+        # Guardrail (2) — authoritative manifest: the actual
+        # (task_id, task_type, env_type) cells this run WILL collect, after every
+        # filter. Emitted before any paid call so the exact schedule is
+        # inspectable, and re-asserted here (after client build, before any API
+        # call) so a wiring drift — not just a registry drift — also aborts.
+        resolved_cells = [
+            (t["id"], _TASK_REGISTRY[t["id"]].task_type, e)
+            for t in tasks for e in active_envs
+            if all_combos or _is_valid_combo(t["id"], e)
+        ]
+        expected = _LIVE_GUARD_SLICE_SIZE.get(live_guard_mechanism)
+        manifest_out = getattr(args, "manifest_out", None)
+        if manifest_out:
+            Path(manifest_out).write_text(
+                json.dumps({"mechanism": live_guard_mechanism,
+                            "expected_cells": expected,
+                            "resolved_cells": len(resolved_cells),
+                            "paid_cap": len(resolved_cells) * 2,
+                            "cells": resolved_cells}, indent=2),
+                encoding="utf-8")
+            log.info("Wrote live-guard manifest (%d cells) to %s",
+                     len(resolved_cells), manifest_out)
+        else:
+            log.info("Live-guard manifest (%d cells):", len(resolved_cells))
+            for cell in resolved_cells:
+                log.info("  %s", cell)
+        if not args.dry_run and expected is not None and len(resolved_cells) != expected:
+            log.error(
+                "Resolved live-guard schedule has %d cells, expected %d; "
+                "refusing to launch a paid run with a mis-sized manifest.",
+                len(resolved_cells), expected)
+            return
 
     if ablation != "full":
         log.info("Ablation profile: %s -> servers: %s", ablation, sorted(ablation_servers))
@@ -485,6 +572,14 @@ def main() -> None:
                         help="Run ALL task×environment cross-products (default: only scientifically valid combinations, ~50%% fewer traces).")
     parser.add_argument("--token-budget", type=int, default=0,
                         help="Max total tokens before auto-halt (0=unlimited). Guards against runaway costs.")
+    parser.add_argument("--live-guard-slice", default=None,
+                        choices=sorted(_LIVE_GUARD_SLICE_SIZE.keys()),
+                        help="Restrict collection to the paired live-guard risky-env slice for "
+                             "one mechanism (atomically sets mechanism + risky-env predicates). "
+                             "Non-dry-run aborts unless the resolved manifest matches the approved size.")
+    parser.add_argument("--manifest-out", default=None,
+                        help="Write the resolved live-guard cell manifest (JSON) to this path "
+                             "instead of logging it. For pre-paid-run inspection.")
     args = parser.parse_args()
 
     log_file = Path(args.out_dir) / "collection.log" if not args.dry_run else None

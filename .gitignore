@@ -65,3 +65,12 @@ configs/*_credentials.yaml
 *.swp
 *.log
 .cache/
+
+# AI-assistant collaboration artifacts (dev-local, not for reviewers/public)
+AGENTS.md
+CLAUDE.md
+.claude/
+.drawio/
+
+# Dev-local documentation store (strategy notes, rebuttal drafts, AI-only docs)
+docs/
