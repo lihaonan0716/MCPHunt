@@ -25,10 +25,13 @@ from mcphunt.taxonomy import (
     TASK_REGISTRY, RISK_TASKS, HN_TASKS, BENIGN_TASKS, CRS_TASKS,
     MECHANISM_INCIDENT_GROUNDING, FAMILY_WORKFLOW_GROUNDING,
 )
+from mcphunt.deviance import compute_deviance_shares
 
 REPO = Path(__file__).resolve().parents[1]
 TRACES_DIR = REPO / "results" / "agent_traces"
 MITIG_DIR = REPO / "results" / "mitigation_traces"
+B3_REPLICATION_DIR = REPO / "results" / "agent_traces_b3_replication"
+REGRESSION_DATA = REPO / "results" / "regression_data.csv"
 OUT = REPO / "paper" / "results_macros.tex"
 
 PRIMARY_SLUG = "gpt_5_4"
@@ -232,6 +235,32 @@ def main() -> None:
     cmd("crsAuditKappa", f"{_akappa:.2f}", "Cohen's kappa (inter-annotator)")
     cmd("crsAuditKappaCILow", f"{_alo:.2f}")
     cmd("crsAuditKappaCIHigh", f"{_ahi:.2f}")
+
+    lines.append("")
+
+    # ── Deviance-share decomposition (appendix Regression Analysis) ──
+    # McFadden pseudo-R² for three single-predictor / full logistic models on the
+    # non-CRS subset of results/regression_data.csv (n=1,440). Shares are
+    # relative to the FULL-model pseudo-R² (appendix.tex:596 verbatim: "share of
+    # the full-model pseudo-R^2 improvement"). Not a causal variance
+    # decomposition; the two shares do NOT sum to 100 by construction — the
+    # remainder is shared variance / interaction / model-implicit CRS influence.
+    lines.append("% === Deviance-share decomposition (non-CRS subset, n=1,440) ===")
+    _ds = compute_deviance_shares(REGRESSION_DATA)
+    # Hard sanity: shape sensibly (denominator = full-model R²; two singles
+    # must not exceed the full or be nonsensical); if this trips, the schema /
+    # subset / reference category has drifted, do NOT paper-over.
+    assert 0.0 < _ds["mech_share_pct"] <= 100.0, _ds
+    assert 0.0 < _ds["model_share_pct"] <= 100.0, _ds
+    assert 60.0 <= _ds["mech_share_pct"] + _ds["model_share_pct"] <= 100.0, _ds
+    cmd("mechDevianceShare", f"{_ds['mech_share_pct']:.1f}",
+        "% of full-model pseudo-R^2 attributable to mechanism (single-predictor)")
+    cmd("modelDevianceShare", f"{_ds['model_share_pct']:.1f}",
+        "% of full-model pseudo-R^2 attributable to model (single-predictor)")
+    cmd("mechPseudoR", f"{_ds['mech_pseudo_r2']:.4f}")
+    cmd("modelPseudoR", f"{_ds['model_pseudo_r2']:.4f}")
+    cmd("fullPseudoR", f"{_ds['full_pseudo_r2']:.4f}")
+    cmd("devianceNonCrsN", str(_ds["n_rows_used"]))
 
     lines.append("")
 
@@ -460,6 +489,35 @@ def main() -> None:
     cmd("numMitigModels", str(mitig_model_count))
     cmd("totalTracesMitigation", fmt_num(total_mitig))
     cmd("totalTracesAll", fmt_num(total_main + total_mitig))
+    cmd("totalTracesReleased", fmt_num(total_main + total_mitig),
+        "canonical alias for released trace total (main + mitigation)")
+
+    # ── Extension traces (executed but not in the HF release bundle at v1) ──
+    # Counted directly from the raw trace files so the rebuttal / paper can
+    # cite the executed-experiments completeness figure without hand-typing.
+    live_guard_defense_path = (
+        TRACES_DIR / "deepseek_v4_flash" / "agent_traces_deft.json"
+    )
+    total_live_guard_defense = 0
+    if live_guard_defense_path.exists():
+        _lg = json.loads(live_guard_defense_path.read_text(encoding="utf-8"))
+        total_live_guard_defense = sum(
+            1 for t in _lg["traces"] if t.get("defense") == "taint_tracking"
+        )
+    cmd("totalTracesLiveGuardDefenseArm", str(total_live_guard_defense),
+        "DeepSeek live-guard defense-arm traces (defense=taint_tracking)")
+
+    total_b3 = 0
+    if B3_REPLICATION_DIR.exists():
+        for f in sorted(B3_REPLICATION_DIR.rglob("agent_traces_browser*.json")):
+            _b3 = json.loads(f.read_text(encoding="utf-8"))
+            total_b3 += len(_b3["traces"])
+    cmd("totalTracesBrowserReplication", str(total_b3),
+        "B3 same-day browser replication (baseline + defense)")
+
+    cmd("totalTracesExecuted",
+        fmt_num(total_main + total_mitig + total_live_guard_defense + total_b3),
+        "all executed traces (released + live-guard defense + B3)")
 
     # Convenience aliases for primary model mitigation (used most in paper)
     cmd("mitigBaseline", f"\\mitigPrimaryMzeroProp\\%")
