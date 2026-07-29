@@ -401,7 +401,7 @@ def build_allocation_report(
 def sample_stratified(
     eligible: List[Dict],
     sample_size: int,
-    seed: int = 42,
+    seed: int = 20260729,
 ) -> List[Dict]:
     """Draw the proportional stratified sample (§3).
 
@@ -428,23 +428,34 @@ def sample_stratified(
 
 
 def _stable_pool_key(trace: Dict[str, Any]) -> str:
-    """Deterministic sort key for the eligible pool.
+    """Deterministic, collision-free sort/identity key for the eligible pool.
 
-    Uses ``trace_id`` when present; falls back to a (model, mechanism,
-    env_type, index-free) composite so the ordering is stable and independent
-    of load/dict iteration order. Two traces must never collide on this key for
-    the SRS frame to be well defined; ``trace_id`` is unique by construction and
-    the fallback appends the JSON of identifying fields.
+    Always a composite of ``model``, ``trace_id``, ``task_id``, ``env_type``
+    and ``risk_mechanism``. ``trace_id`` is NOT globally unique: the same
+    ``trace_id`` (e.g. ``backup_all_risky_v1``) is reused across models, so
+    keying on ``trace_id`` alone collides across arms and makes the SRS frame
+    ill defined and the selected/invalid/miss sample keys ambiguous. The
+    composite disambiguates every trace so the seeded draw is well defined and
+    a paid run can be proven to hit the same sample as the dry-run.
     """
-    tid = str(trace.get("trace_id", ""))
-    if tid:
-        return tid
     return "::".join([
         str(trace.get("model", "")),
-        trace_mechanism(trace),
-        str(trace.get("env_type", "")),
+        str(trace.get("trace_id", "")),
         str(trace.get("task_id", "")),
+        str(trace.get("env_type", "")),
+        trace_mechanism(trace),
     ])
+
+
+def _stable_pool_key_fields(trace: Dict[str, Any]) -> Dict[str, str]:
+    """Structured form of :func:`_stable_pool_key` for artifact provenance."""
+    return {
+        "model": str(trace.get("model", "")),
+        "trace_id": str(trace.get("trace_id", "")),
+        "task_id": str(trace.get("task_id", "")),
+        "env_type": str(trace.get("env_type", "")),
+        "risk_mechanism": trace_mechanism(trace),
+    }
 
 
 def sampling_frame(eligible: List[Dict]) -> List[Dict]:
@@ -474,7 +485,7 @@ def sampling_frame_hash(frame: List[Dict]) -> str:
 def sample_srs(
     eligible: List[Dict],
     sample_size: int,
-    seed: int = 42,
+    seed: int = 20260729,
 ) -> List[Dict]:
     """Seeded simple random sample WITHOUT replacement over the stable frame.
 
@@ -561,7 +572,7 @@ def validate_judgment(parsed: Any) -> Dict:
     "false", which is truthy), ``confidence`` in ``CONFIDENCE_LEVELS``,
     ``leak_type`` in ``LEAK_TYPES``. On any violation the judgment is returned
     with ``valid=False`` and a ``schema_error`` note so it lands in
-    ``invalid_judgment_trace_ids`` rather than the estimator.
+    ``invalid_judgment_sample_keys`` rather than the estimator.
     """
     if not isinstance(parsed, dict):
         return {"leaked": False, "valid": False, "confidence": "low",
@@ -685,7 +696,7 @@ def judge_sample_with_retry(
     do_retry = on_invalid == "retry"
     effective_max = max_retries if do_retry else 0
     results: List[Dict] = []
-    retried_trace_ids: List[str] = []
+    retried_sample_keys: List[str] = []
     retry_attempts_total = 0
     usage_total = {"prompt_tokens": 0, "completion_tokens": 0,
                    "total_tokens": 0, "judge_calls": 0}
@@ -715,6 +726,10 @@ def judge_sample_with_retry(
                 _accrue(judgment)
                 attempts += 1
         judgment["trace_id"] = trace["trace_id"]
+        # Composite, collision-free identity: trace_id alone repeats across
+        # models, so invalid/miss/retried ID lists must key on the composite to
+        # stay unambiguous across arms (see _stable_pool_key).
+        judgment["sample_key"] = _stable_pool_key(trace)
         judgment["task_id"] = trace.get("task_id", "")
         judgment["env_type"] = trace.get("env_type", "")
         judgment["model"] = trace.get("model", "")
@@ -723,7 +738,7 @@ def judge_sample_with_retry(
         judgment["judge_attempts"] = attempts
         judgment["finalized_after_retry"] = retried_this and bool(judgment.get("valid", True))
         if retried_this:
-            retried_trace_ids.append(trace["trace_id"])
+            retried_sample_keys.append(_stable_pool_key(trace))
         results.append(judgment)
         if progress is not None:
             progress(i, trace, judgment)
@@ -732,7 +747,7 @@ def judge_sample_with_retry(
         "retry_policy": on_invalid,
         "max_retries": effective_max,
         "retry_attempts_total": retry_attempts_total,
-        "retried_trace_ids": retried_trace_ids,
+        "retried_sample_keys": retried_sample_keys,
         "remaining_invalid_after_retry": remaining_invalid,
         "token_usage": usage_total,
         "echoed_model_ids": sorted(echoed_models),
@@ -973,7 +988,7 @@ def main() -> None:
     parser.add_argument("--judge-model", default="gpt-5.4")
     parser.add_argument("--judge-api-base", default="")
     parser.add_argument("--judge-api-key", default="")
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--seed", type=int, default=20260729)
     parser.add_argument(
         "--evidence-truncation-chars",
         type=int,
@@ -1042,7 +1057,8 @@ def main() -> None:
     frame = sampling_frame(eligible)
     frame_hash = sampling_frame_hash(frame)
     samples = sample_srs(eligible, args.sample_size, seed=args.seed)
-    selected_ids = [_stable_pool_key(t) for t in samples]
+    selected_sample_key_strings = [_stable_pool_key(t) for t in samples]
+    selected_sample_keys = [_stable_pool_key_fields(t) for t in samples]
     coverage_report = realized_coverage(
         eligible, samples, observed_models=candidate_models)
     n_uncovered = coverage_report["n_uncovered_cells"]
@@ -1084,7 +1100,7 @@ def main() -> None:
               f"({'OFF' if args.evidence_truncation_chars == 0 else 'ON'}); "
               f"{n_trunc_traces}/{len(samples)} sampled trace(s) would be capped.")
         # Full preflight artifact for pre-paid coverage audit: the eligible pool,
-        # the SRS frame hash, the exact selected trace IDs, and the realized
+        # the SRS frame hash, the exact selected sample keys, and the realized
         # coverage as JSON so the pre-paid review is auditable and the paid run
         # can prove it drew the identical sample.
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -1099,7 +1115,8 @@ def main() -> None:
             "seed": args.seed,
             "is_census": is_census,
             "sampling_frame_hash": frame_hash,
-            "selected_trace_ids": selected_ids,
+            "selected_sample_keys": selected_sample_keys,
+            "selected_sample_key_strings": selected_sample_key_strings,
             "include_defense": args.include_defense,
             "evidence_truncation_chars": args.evidence_truncation_chars,
             "n_evidence_truncated_traces": n_trunc_traces,
@@ -1143,7 +1160,9 @@ def main() -> None:
     # denominator -- a failed judge call is missing data, not "no miss".
     valid = [r for r in results if r.get("valid", True)]
     invalid = [r for r in results if not r.get("valid", True)]
-    invalid_trace_ids = [r["trace_id"] for r in invalid]
+    # Composite sample_key (not bare trace_id) so invalid IDs are unambiguous
+    # across models sharing a trace_id.
+    invalid_judgment_sample_keys = [r["sample_key"] for r in invalid]
 
     semantic_misses = [r for r in valid if r.get("leaked")]
     # Invalid-judgment contract (decision 3): n = full drawn sample, k = observed
@@ -1173,8 +1192,8 @@ def main() -> None:
     # Low-confidence misses are surfaced separately (with trace ids) because a
     # low-confidence positive is the shakiest input to the estimate and a
     # reviewer will want to audit exactly those.
-    low_conf_misses = [
-        r["trace_id"] for r in semantic_misses
+    low_confidence_miss_sample_keys = [
+        r["sample_key"] for r in semantic_misses
         if str(r.get("confidence", "")).lower() == "low"
     ]
     n_trunc = sum(1 for r in results if r.get("evidence_truncated"))
@@ -1223,9 +1242,9 @@ def main() -> None:
         if count:
             print(f"  {lt}: {count}")
     print(f"Low-confidence judgments: {n_low_conf}/{n_valid}  "
-          f"(of which misses: {len(low_conf_misses)})")
+          f"(of which misses: {len(low_confidence_miss_sample_keys)})")
     if invalid:
-        print(f"Invalid judgments: {m_invalid} -> {invalid_trace_ids}")
+        print(f"Invalid judgments: {m_invalid} -> {invalid_judgment_sample_keys}")
     if args.on_invalid == "retry":
         print(f"Retry policy: retry (max {args.max_retries}); "
               f"extra judge calls: {retry_audit['retry_attempts_total']}; "
@@ -1260,12 +1279,13 @@ def main() -> None:
         "eligible_candidates": n_eligible,
         "excluded_control_candidates": len(excluded_controls),
         "sampling_frame_hash": frame_hash,
-        "selected_trace_ids": selected_ids,
+        "selected_sample_keys": selected_sample_keys,
+        "selected_sample_key_strings": selected_sample_key_strings,
         "samples_drawn": n_drawn,
         "samples_judged": len(results),
         "valid_judgments": n_valid,
         "invalid_judgments": m_invalid,
-        "invalid_judgment_trace_ids": invalid_trace_ids,
+        "invalid_judgment_sample_keys": invalid_judgment_sample_keys,
         "observed_misses_k": k_misses,
         "permanent_invalid_m": m_invalid,
         # Headline is the missingness band; there is no single "recall" number.
@@ -1281,7 +1301,7 @@ def main() -> None:
         ),
         "leak_type_breakdown": leak_type_breakdown,
         "low_confidence_judgments": n_low_conf,
-        "low_confidence_miss_trace_ids": low_conf_misses,
+        "low_confidence_miss_sample_keys": low_confidence_miss_sample_keys,
         "evidence_truncation_chars": args.evidence_truncation_chars,
         "evidence_window_truncated_traces": n_trunc,
         "truncation_strata": truncation_strata,
@@ -1310,7 +1330,7 @@ def main() -> None:
         "retry_policy": retry_audit["retry_policy"],
         "max_retries": retry_audit["max_retries"],
         "retry_attempts_total": retry_audit["retry_attempts_total"],
-        "retried_trace_ids": retry_audit["retried_trace_ids"],
+        "retried_sample_keys": retry_audit["retried_sample_keys"],
         "remaining_invalid_after_retry": retry_audit["remaining_invalid_after_retry"],
         "judge_evidence_tools": sorted(JUDGE_EVIDENCE_TOOLS),
         "seed": args.seed,

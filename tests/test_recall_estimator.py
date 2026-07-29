@@ -222,6 +222,27 @@ class TestSRSSampler(unittest.TestCase):
         h2 = ER.sampling_frame_hash(ER.sampling_frame(pool2))
         self.assertNotEqual(h1, h2)
 
+    def test_same_trace_id_across_models_does_not_collide(self):
+        """trace_id repeats across models (e.g. backup_all_risky_v1); the
+        composite key must keep the two traces distinct everywhere so the SRS
+        frame is well defined and a paid run provably hits the dry-run sample."""
+        a = _trace(model="deepseek", mech="x", tid="shared_v1")
+        b = _trace(model="opus", mech="x", tid="shared_v1")
+        # Distinct composite keys despite identical trace_id.
+        self.assertNotEqual(ER._stable_pool_key(a), ER._stable_pool_key(b))
+        # Frame keeps both -- no silent dedup -- and the hash reflects both.
+        frame = ER.sampling_frame([a, b])
+        self.assertEqual(len(frame), 2)
+        self.assertNotEqual(
+            ER.sampling_frame_hash(ER.sampling_frame([a])),
+            ER.sampling_frame_hash(frame),
+        )
+        # A census draw returns both, keyed by the collision-free composite.
+        drawn = ER.sample_srs([a, b], 1000, seed=20260729)
+        keys = [ER._stable_pool_key(t) for t in drawn]
+        self.assertEqual(len(keys), 2)
+        self.assertEqual(len(set(keys)), 2)
+
 
 class TestRealizedCoverage(unittest.TestCase):
     def _pool(self):
@@ -532,7 +553,7 @@ class TestJudgeSampleWithRetry(unittest.TestCase):
         self.assertEqual(audit["retry_policy"], "report")
         self.assertEqual(audit["max_retries"], 0)
         self.assertEqual(audit["retry_attempts_total"], 0)
-        self.assertEqual(audit["retried_trace_ids"], [])
+        self.assertEqual(audit["retried_sample_keys"], [])
         self.assertEqual(audit["remaining_invalid_after_retry"], 1)
         self.assertEqual(results[0]["judge_attempts"], 1)
         self.assertFalse(results[0]["finalized_after_retry"])
@@ -578,7 +599,9 @@ class TestJudgeSampleWithRetry(unittest.TestCase):
         self.assertTrue(r["finalized_after_retry"])
         self.assertTrue(r["valid"])
         self.assertEqual(audit["retry_attempts_total"], 1)
-        self.assertEqual(audit["retried_trace_ids"], ["a"])
+        # Composite, collision-free identity (not the bare trace_id).
+        self.assertEqual(audit["retried_sample_keys"],
+                         [ER._stable_pool_key(samples[0])])
         self.assertEqual(audit["remaining_invalid_after_retry"], 0)
 
     def test_retry_stops_at_max_retries(self):
@@ -603,7 +626,9 @@ class TestJudgeSampleWithRetry(unittest.TestCase):
         self.assertEqual(client.chat.completions.n_calls, 3)
         self.assertEqual(results[0]["judge_attempts"], 1)
         self.assertEqual(results[1]["judge_attempts"], 2)
-        self.assertEqual(audit["retried_trace_ids"], ["b"])
+        # Only the invalid trace ("b") is retried, keyed by composite identity.
+        self.assertEqual(audit["retried_sample_keys"],
+                         [ER._stable_pool_key(samples[1])])
 
 
 class TestPooledMissPrevalence(unittest.TestCase):
@@ -822,11 +847,22 @@ class TestMainStdoutJsonContract(unittest.TestCase):
         self.assertEqual(out["retry_policy"], "report")
         self.assertEqual(out["max_retries"], 0)
         self.assertEqual(out["retry_attempts_total"], 0)
-        self.assertEqual(out["retried_trace_ids"], [])
+        self.assertEqual(out["retried_sample_keys"], [])
         self.assertEqual(out["remaining_invalid_after_retry"], 0)
+        # provenance ID lists are composite sample keys, not bare trace_ids:
+        # the three list fields carry the *_sample_keys contract and the old
+        # *_trace_ids key names must be gone from the paid-path output.
+        for key in ("retried_sample_keys", "invalid_judgment_sample_keys",
+                    "low_confidence_miss_sample_keys"):
+            self.assertIn(key, out)
+            self.assertIsInstance(out[key], list)
+        for old in ("retried_trace_ids", "invalid_judgment_trace_ids",
+                    "low_confidence_miss_trace_ids"):
+            self.assertNotIn(old, out)
         # provenance: SRS frame identity must be recorded per run.
         self.assertIn("sampling_frame_hash", out)
-        self.assertEqual(out["seed"], 42)
+        # Default committed seed (echoed for provenance).
+        self.assertEqual(out["seed"], 20260729)
         # judge provenance: provider/base_url + echoed model ids + token usage
         # recorded, API key never.
         prov = out["judge_provenance"]
@@ -852,7 +888,12 @@ class TestMainStdoutJsonContract(unittest.TestCase):
         self.assertEqual(out["retry_policy"], "retry")
         self.assertEqual(out["max_retries"], 2)
         self.assertGreaterEqual(out["retry_attempts_total"], 1)
-        self.assertIn("a", out["retried_trace_ids"])
+        # Retried IDs are the collision-free composite key of the retried
+        # candidate (tid="a"), not the bare trace_id.
+        self.assertIn(
+            ER._stable_pool_key(_candidate(model="m", mech="file_to_file", tid="a")),
+            out["retried_sample_keys"],
+        )
         self.assertEqual(out["remaining_invalid_after_retry"], 0)
         self.assertIn("Retry policy: retry", stdout)
 
