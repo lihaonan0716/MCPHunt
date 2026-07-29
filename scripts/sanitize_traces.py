@@ -12,6 +12,13 @@ Usage:
     python3 scripts/sanitize_traces.py                   # dry-run (report only)
     python3 scripts/sanitize_traces.py --apply           # overwrite in place
     python3 scripts/sanitize_traces.py --outdir release/  # write to separate dir
+
+The private inference-gateway host is never stored in this source. To enable
+the host-conditional gateway rules (api_base/base_url value match, bare-host
+fallback, residual red line), export the host at runtime:
+    MCPHUNT_PRIVATE_GATEWAY_HOST=<host> python3 scripts/sanitize_traces.py ...
+Without it, only the always-on keyed rules (ANTHROPIC_BASE_URL, judge_api_base)
+run.
 """
 
 import argparse
@@ -24,7 +31,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 
-# ── Replacement rules (order matters: longest match first) ──────────
+# -- Replacement rules (order matters: longest match first) ----------
 
 # All variants of the project root path (including model hallucinations)
 _PROJECT_ROOT_RE = re.compile(
@@ -49,12 +56,12 @@ _BARE_USERNAME_REPLACEMENT = "user"
 # Also catch variant spellings from model hallucinations
 _BARE_USERNAME_VARIANT_RE = re.compile(r"lihahaonan")
 
-# ── Windows / VSCode collection environment rules ────────────────────
+# -- Windows / VSCode collection environment rules --------------------
 # IMPORTANT: only replace "Administrator" when it is ANCHORED to a leak
 # context (a path separator, an env-var assignment, or ls ownership).
 # A bare "Administrator" also occurs in legitimate trace content
 # (e.g. the PyPI classifier "Intended Audience :: System Administrators"),
-# so a bare \bAdministrator\b rule would corrupt real data — do NOT add one.
+# so a bare \bAdministrator\b rule would corrupt real data - do NOT add one.
 #
 # The username token "Administrator" is preceded, across all observed leak
 # forms, by one of: "\Users\", "\\Users\\", "/Users/", "USERNAME=".
@@ -84,7 +91,7 @@ _WIN_COLLAPSED_USER_REPLACEMENT = r"<HOME>"
 # structurally; only the username after it is normalised above. The machine
 # drive letter alone is not PII.
 
-# ls -la ownership from git-bash: "Administrator 197121" → "user user"
+# ls -la ownership from git-bash: "Administrator 197121" -> "user user"
 # (197121 is a Windows SID group id that leaks the local account).
 _WIN_LS_OWNER_RE = re.compile(r"Administrator(\s+)197121")
 _WIN_LS_OWNER_REPLACEMENT = r"user\1user"
@@ -94,7 +101,7 @@ _WIN_LS_OWNER_REPLACEMENT = r"user\1user"
 # and the raw SID numbers themselves identify the machine's local group.
 _WIN_STAT_OWNER_RE = re.compile(r"(\((?:19710[0-9]|19711[0-9]|19712[0-9])/)Administrator")
 _WIN_STAT_OWNER_REPLACEMENT = r"\1user"
-# Bare leaked Windows SID numbers (uid 197108, gid 197121) → neutral 0.
+# Bare leaked Windows SID numbers (uid 197108, gid 197121) -> neutral 0.
 _WIN_SID_RE = re.compile(r"\b(?:197108|197121)\b")
 _WIN_SID_REPLACEMENT = "0"
 
@@ -119,16 +126,91 @@ _LOGONSERVER_REPLACEMENT = r"\1MCPHUNT-HOST"
 _HOSTNAME_BARE_RE = re.compile(r"DESKTOP-10UVREO")
 _HOSTNAME_BARE_REPLACEMENT = "MCPHUNT-HOST"
 
+# -- Private inference-gateway rules ----------------------------------
+# The judge / collection calls were routed through a private paid gateway
+# whose host must never appear on a public release. The host literal is NOT
+# stored in this (public) source: it is injected at runtime from the
+# environment variable MCPHUNT_PRIVATE_GATEWAY_HOST. Rules split into two tiers:
+#
+#   Always-on (generic keyed provenance - value is a gateway URL by the field's
+#   definition, so it is always safe to neutralise, no host literal needed):
+#     (a) env-dump string:  ANTHROPIC_BASE_URL=<scheme>://<host>/...
+#     (b) JSON field:       "judge_api_base": "<scheme>://<host>/..."
+#
+#   Host-conditional (only when MCPHUNT_PRIVATE_GATEWAY_HOST is configured -
+#   these need the literal host to avoid corrupting legitimate metadata):
+#     (c) "api_base"/"base_url" JSON field, but ONLY when the value carries the
+#         configured private host (a bare api.anthropic.com value is left alone)
+#     (d) bare-host fallback: any residual mention of the private host, in any
+#         surrounding context, collapses to the neutral marker.
+#
+# The sanitizer must NOT read configs/api_keys.yaml - it is a release-cleaning
+# tool and has no business touching secret config.
 
-def sanitize_text(raw: str) -> str:
-    """Apply all sanitization rules to a raw JSON string."""
+_PRIVATE_GATEWAY_HOST_ENV = "MCPHUNT_PRIVATE_GATEWAY_HOST"
+_GATEWAY_MARKER = "<internal-gateway>"
+_GATEWAY_BARE_MARKER = "internal-gateway"
+
+# (a) env-var assignment form: ANTHROPIC_BASE_URL=<scheme>://<host>...
+_GATEWAY_ENV_RE = re.compile(
+    r"(ANTHROPIC_BASE_URL=)https?://[^\s\"'`,)]+"
+)
+_GATEWAY_ENV_REPLACEMENT = r"\1" + _GATEWAY_MARKER
+
+# (b) JSON endpoint field form: "judge_api_base": "https://<host>/v1"
+# Scoped to the exact key judge_api_base only - not any field containing
+# "judge" - so unrelated provenance fields are never rewritten.
+_GATEWAY_JUDGE_FIELD_RE = re.compile(
+    r"(\"judge_api_base\"\s*:\s*\")https?://[^\"]+(\")"
+)
+_GATEWAY_JUDGE_FIELD_REPLACEMENT = r"\1" + _GATEWAY_MARKER + r"\2"
+
+
+def _resolve_private_host(explicit: str | None = None) -> str | None:
+    """Return the private gateway host: explicit arg, else env var, else None."""
+    host = explicit if explicit is not None else os.environ.get(_PRIVATE_GATEWAY_HOST_ENV)
+    host = (host or "").strip()
+    return host or None
+
+
+def _host_conditional_rules(host: str):
+    """Build host-conditional regex rules from an injected host literal.
+
+    Returned as (compiled_re, replacement) pairs so no host literal ever lives
+    in this source file.
+    """
+    esc = re.escape(host)
+    # (c) api_base / base_url JSON field, ONLY when value carries the host.
+    api_field_re = re.compile(
+        r"(\"(?:api_base|base_url)\"\s*:\s*\")https?://" + esc + r"[^\"]*(\")"
+    )
+    api_field_repl = r"\1" + _GATEWAY_MARKER + r"\2"
+    # (d) scheme-bearing host fallback then bare host.
+    host_url_re = re.compile(r"https?://" + esc + r"[^\s\"'`,)]*")
+    bare_host_re = re.compile(esc)
+    return [
+        (api_field_re, api_field_repl),
+        (host_url_re, _GATEWAY_MARKER),
+        (bare_host_re, _GATEWAY_BARE_MARKER),
+    ]
+
+
+def sanitize_text(raw: str, private_host: str | None = None) -> str:
+    """Apply all sanitization rules to a raw JSON string.
+
+    ``private_host`` (or the ``MCPHUNT_PRIVATE_GATEWAY_HOST`` env var when the
+    argument is omitted) enables the host-conditional gateway rules. When no
+    host is configured, only the always-on keyed rules (ANTHROPIC_BASE_URL,
+    judge_api_base) run - generic api_base/base_url values are left untouched.
+    """
+    host = _resolve_private_host(private_host)
     # macOS / PyCharm rules
     result = _PROJECT_ROOT_RE.sub(_PROJECT_ROOT_REPLACEMENT, raw)
     result = _USER_HOME_RE.sub(_USER_HOME_REPLACEMENT, result)
     result = _PYCHARM_RE.sub(_PYCHARM_REPLACEMENT, result)
     result = _BARE_USERNAME_VARIANT_RE.sub(_BARE_USERNAME_REPLACEMENT, result)
     result = _BARE_USERNAME_RE.sub(_BARE_USERNAME_REPLACEMENT, result)
-    # Windows / VSCode rules (anchored — never touch bare "Administrator")
+    # Windows / VSCode rules (anchored - never touch bare "Administrator")
     result = _WIN_USER_IN_PATH_RE.sub(_WIN_USER_IN_PATH_REPLACEMENT, result)
     result = _WIN_COLLAPSED_USER_RE.sub(_WIN_COLLAPSED_USER_REPLACEMENT, result)
     result = _WIN_LS_OWNER_RE.sub(_WIN_LS_OWNER_REPLACEMENT, result)
@@ -142,12 +224,29 @@ def sanitize_text(raw: str) -> str:
     result = _COMPUTERNAME_RE.sub(_COMPUTERNAME_REPLACEMENT, result)
     result = _LOGONSERVER_RE.sub(_LOGONSERVER_REPLACEMENT, result)
     result = _HOSTNAME_BARE_RE.sub(_HOSTNAME_BARE_REPLACEMENT, result)
+    # Private gateway rules. Always-on keyed forms first (they preserve the key
+    # and need no host literal). Then, only when a private host is configured,
+    # the host-conditional rules: api_base/base_url value match, scheme-bearing
+    # host fallback, bare host. Ordering ensures a bare-host rule never eats a
+    # value the keyed rules would neutralise first.
+    result = _GATEWAY_ENV_RE.sub(_GATEWAY_ENV_REPLACEMENT, result)
+    result = _GATEWAY_JUDGE_FIELD_RE.sub(_GATEWAY_JUDGE_FIELD_REPLACEMENT, result)
+    if host:
+        for rgx, repl in _host_conditional_rules(host):
+            result = rgx.sub(repl, result)
     return result
 
 
-def validate_sanitization(original: str, sanitized: str, filepath: str) -> list[str]:
-    """Check that sanitization didn't break anything."""
+def validate_sanitization(original: str, sanitized: str, filepath: str,
+                          private_host: str | None = None) -> list[str]:
+    """Check that sanitization didn't break anything.
+
+    The private-gateway host red line is only checked when a host is configured
+    (via ``private_host`` or ``MCPHUNT_PRIVATE_GATEWAY_HOST``); the host literal
+    is never stored in this source.
+    """
     errors = []
+    host = _resolve_private_host(private_host)
 
     # 1. Must still be valid JSON
     try:
@@ -196,8 +295,13 @@ def validate_sanitization(original: str, sanitized: str, filepath: str) -> list[
         if pattern in sanitized:
             errors.append(f"Residual sensitive string: '{pattern}'")
 
+    # 5a. Private inference-gateway host red line - only when a host is
+    # configured (the literal is injected, never stored in this source).
+    if host and host in sanitized:
+        errors.append("Residual sensitive string: private gateway host")
+
     # 5b. Anchored Windows-username leaks (bare 'Administrator' is legitimate
-    # trace content — e.g. 'System Administrators' — so only flag the
+    # trace content - e.g. 'System Administrators' - so only flag the
     # path-/env-anchored forms that actually expose the local account).
     for label, rgx in [
         ("Users\\Administrator (path)",
@@ -233,21 +337,37 @@ def main():
     files = find_trace_files()
     print(f"Found {len(files)} JSON files under results/")
 
+    host = _resolve_private_host()
+    if host:
+        print(f"Private gateway host configured via {_PRIVATE_GATEWAY_HOST_ENV} "
+              f"- host-conditional rules ENABLED.")
+    else:
+        print(f"No {_PRIVATE_GATEWAY_HOST_ENV} set - only generic keyed gateway "
+              f"rules active (ANTHROPIC_BASE_URL, judge_api_base).")
+
     total_replacements = 0
     total_errors = 0
 
+    # Count-only regexes: always-on rules plus, when a host is configured, the
+    # bare-host rule. A file whose ONLY leak is the private gateway (e.g. the
+    # recall artifact) must report >0 changes or it would never be written out.
+    count_res = [
+        _PROJECT_ROOT_RE, _USER_HOME_RE, _PYCHARM_RE,
+        _BARE_USERNAME_RE, _BARE_USERNAME_VARIANT_RE,
+        _GATEWAY_ENV_RE, _GATEWAY_JUDGE_FIELD_RE,
+    ]
+    if host:
+        # re.escape'd bare-host regex catches the recall/live_guard leaks.
+        count_res.append(re.compile(re.escape(host)))
+
     for filepath in files:
         raw = filepath.read_text(encoding="utf-8")
-        sanitized = sanitize_text(raw)
+        sanitized = sanitize_text(raw, private_host=host)
 
-        n_changes = sum(
-            len(r.findall(raw)) for r in [
-                _PROJECT_ROOT_RE, _USER_HOME_RE, _PYCHARM_RE,
-                _BARE_USERNAME_RE, _BARE_USERNAME_VARIANT_RE,
-            ]
-        )
+        n_changes = sum(len(r.findall(raw)) for r in count_res)
 
-        errors = validate_sanitization(raw, sanitized, str(filepath))
+        errors = validate_sanitization(raw, sanitized, str(filepath),
+                                       private_host=host)
 
         rel = filepath.relative_to(REPO)
         status = "OK" if not errors else "ERRORS"
@@ -269,7 +389,7 @@ def main():
     print(f"\nTotal: {total_replacements} replacements across {len(files)} files, {total_errors} errors")
 
     if not args.apply and not args.outdir:
-        print("\nDry run — no files modified. Use --apply to overwrite or --outdir DIR to write copies.")
+        print("\nDry run - no files modified. Use --apply to overwrite or --outdir DIR to write copies.")
 
     return 1 if total_errors > 0 else 0
 
