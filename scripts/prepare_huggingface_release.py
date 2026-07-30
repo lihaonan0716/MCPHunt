@@ -465,7 +465,8 @@ def main(skip_sanitize: bool = False,
         print(f"\n[{variant}]\n3. huggingface-cli upload "
               f"{STAGING_VARIANTS[variant]['hf_repo']} \\\n"
               f"     {staging} . --repo-type dataset")
-    print("\n4. Update the dataset URL in scripts/download_traces.py\n")
+    print("\n4. Verify downloads with `make download && make paired`. "
+          "Use --repo-id or MCPHUNT_HF_REPO_ID to override the branch default.\n")
 
 
 if __name__ == "__main__":
