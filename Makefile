@@ -17,7 +17,7 @@ TRACE_FILES := $(wildcard results/agent_traces/*/agent_traces.json)
 
 # ── Core targets ──────────────────────────────────────────────
 
-.PHONY: test download relabel reproduce sanitize all
+.PHONY: test download relabel reproduce paired sanitize release all
 
 ## Run unit tests
 test:
@@ -40,10 +40,25 @@ relabel:
 reproduce:
 	$(PYTHON) scripts/reproduce_paper_tables.py
 
+## Recompute the matched-pair analyses (hard-negative 2x2 + live-guard pairs)
+## Needs the supplemental arms (live-guard defense + browser replication);
+## `make download` restores them to the paths these scripts default to, so the
+## reviewer path is `make download && make paired` in a fresh clone.
+paired:
+	$(PYTHON) scripts/compute_hard_negative_ci.py
+	$(PYTHON) scripts/analyze_paired_live_guard.py
+
 ## Sanitize traces for anonymous release
 sanitize:
 	$(PYTHON) scripts/sanitize_traces.py --apply
 
-## Full pipeline: relabel + reproduce
+## Rebuild both HuggingFace staging bundles (sanitize -> recompute -> stage)
+release:
+	$(PYTHON) scripts/generate_croissant_metadata.py
+	$(PYTHON) scripts/prepare_huggingface_release.py
+
+## Full local pipeline: relabel + reproduce
+## Keep `paired` explicit: it needs the supplemental release inputs, so folding
+## it into `all` would reintroduce a hidden dependency for ordinary worktrees.
 all: relabel reproduce
 	@echo "=== All targets complete ==="

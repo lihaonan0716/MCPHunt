@@ -173,6 +173,40 @@ def _resolve_private_host(explicit: str | None = None) -> str | None:
     return host or None
 
 
+# Single ordered source of truth for every host-independent rule. Both
+# sanitize_text() and main()'s match counter read this list, so a newly added
+# rule cannot apply during sanitization while staying invisible to the counter
+# (the drift that previously left the Windows rules uncounted).
+#
+# Order is load-bearing and matches the original sequence: macOS/PyCharm rules,
+# then the anchored Windows/VSCode rules (stat-owner before the bare-SID zeroing
+# that would otherwise consume those digits), then the always-on keyed gateway
+# rules.
+_HOST_INDEPENDENT_RULES = (
+    (_PROJECT_ROOT_RE, _PROJECT_ROOT_REPLACEMENT),
+    (_USER_HOME_RE, _USER_HOME_REPLACEMENT),
+    (_PYCHARM_RE, _PYCHARM_REPLACEMENT),
+    (_BARE_USERNAME_VARIANT_RE, _BARE_USERNAME_REPLACEMENT),
+    (_BARE_USERNAME_RE, _BARE_USERNAME_REPLACEMENT),
+    (_WIN_USER_IN_PATH_RE, _WIN_USER_IN_PATH_REPLACEMENT),
+    (_WIN_COLLAPSED_USER_RE, _WIN_COLLAPSED_USER_REPLACEMENT),
+    (_WIN_LS_OWNER_RE, _WIN_LS_OWNER_REPLACEMENT),
+    (_WIN_STAT_OWNER_RE, _WIN_STAT_OWNER_REPLACEMENT),
+    (_WIN_SID_RE, _WIN_SID_REPLACEMENT),
+    (_WIN_USERNAME_ENV_RE, _WIN_USERNAME_ENV_REPLACEMENT),
+    (_CLAUDE_EXECPATH_RE, _CLAUDE_EXECPATH_REPLACEMENT),
+    (_INIT_CWD_RE, _INIT_CWD_REPLACEMENT),
+    (_COMPUTERNAME_RE, _COMPUTERNAME_REPLACEMENT),
+    (_LOGONSERVER_RE, _LOGONSERVER_REPLACEMENT),
+    (_HOSTNAME_BARE_RE, _HOSTNAME_BARE_REPLACEMENT),
+    (_GATEWAY_ENV_RE, _GATEWAY_ENV_REPLACEMENT),
+    (_GATEWAY_JUDGE_FIELD_RE, _GATEWAY_JUDGE_FIELD_REPLACEMENT),
+)
+
+# Derived view for match counting; never maintained separately.
+_COUNTED_RULES = tuple(rgx for rgx, _ in _HOST_INDEPENDENT_RULES)
+
+
 def _host_conditional_rules(host: str):
     """Build host-conditional regex rules from an injected host literal.
 
@@ -204,33 +238,17 @@ def sanitize_text(raw: str, private_host: str | None = None) -> str:
     judge_api_base) run - generic api_base/base_url values are left untouched.
     """
     host = _resolve_private_host(private_host)
-    # macOS / PyCharm rules
-    result = _PROJECT_ROOT_RE.sub(_PROJECT_ROOT_REPLACEMENT, raw)
-    result = _USER_HOME_RE.sub(_USER_HOME_REPLACEMENT, result)
-    result = _PYCHARM_RE.sub(_PYCHARM_REPLACEMENT, result)
-    result = _BARE_USERNAME_VARIANT_RE.sub(_BARE_USERNAME_REPLACEMENT, result)
-    result = _BARE_USERNAME_RE.sub(_BARE_USERNAME_REPLACEMENT, result)
-    # Windows / VSCode rules (anchored - never touch bare "Administrator")
-    result = _WIN_USER_IN_PATH_RE.sub(_WIN_USER_IN_PATH_REPLACEMENT, result)
-    result = _WIN_COLLAPSED_USER_RE.sub(_WIN_COLLAPSED_USER_REPLACEMENT, result)
-    result = _WIN_LS_OWNER_RE.sub(_WIN_LS_OWNER_REPLACEMENT, result)
-    # stat owner (keeps SID digits, rewrites the trailing username) must run
-    # before the bare-SID zeroing rule below, which consumes those digits.
-    result = _WIN_STAT_OWNER_RE.sub(_WIN_STAT_OWNER_REPLACEMENT, result)
-    result = _WIN_SID_RE.sub(_WIN_SID_REPLACEMENT, result)
-    result = _WIN_USERNAME_ENV_RE.sub(_WIN_USERNAME_ENV_REPLACEMENT, result)
-    result = _CLAUDE_EXECPATH_RE.sub(_CLAUDE_EXECPATH_REPLACEMENT, result)
-    result = _INIT_CWD_RE.sub(_INIT_CWD_REPLACEMENT, result)
-    result = _COMPUTERNAME_RE.sub(_COMPUTERNAME_REPLACEMENT, result)
-    result = _LOGONSERVER_RE.sub(_LOGONSERVER_REPLACEMENT, result)
-    result = _HOSTNAME_BARE_RE.sub(_HOSTNAME_BARE_REPLACEMENT, result)
-    # Private gateway rules. Always-on keyed forms first (they preserve the key
-    # and need no host literal). Then, only when a private host is configured,
-    # the host-conditional rules: api_base/base_url value match, scheme-bearing
-    # host fallback, bare host. Ordering ensures a bare-host rule never eats a
-    # value the keyed rules would neutralise first.
-    result = _GATEWAY_ENV_RE.sub(_GATEWAY_ENV_REPLACEMENT, result)
-    result = _GATEWAY_JUDGE_FIELD_RE.sub(_GATEWAY_JUDGE_FIELD_REPLACEMENT, result)
+    # Host-independent rules, in the order fixed by _HOST_INDEPENDENT_RULES:
+    # macOS/PyCharm, then the anchored Windows/VSCode rules (never touching a
+    # bare "Administrator"), then the always-on keyed gateway forms (which
+    # preserve the key and need no host literal).
+    result = raw
+    for rgx, repl in _HOST_INDEPENDENT_RULES:
+        result = rgx.sub(repl, result)
+    # Then, only when a private host is configured, the host-conditional rules:
+    # api_base/base_url value match, scheme-bearing host fallback, bare host.
+    # Running them last ensures a bare-host rule never eats a value the keyed
+    # rules would neutralise first.
     if host:
         for rgx, repl in _host_conditional_rules(host):
             result = rgx.sub(repl, result)
@@ -348,14 +366,12 @@ def main():
     total_replacements = 0
     total_errors = 0
 
-    # Count-only regexes: always-on rules plus, when a host is configured, the
-    # bare-host rule. A file whose ONLY leak is the private gateway (e.g. the
-    # recall artifact) must report >0 changes or it would never be written out.
-    count_res = [
-        _PROJECT_ROOT_RE, _USER_HOME_RE, _PYCHARM_RE,
-        _BARE_USERNAME_RE, _BARE_USERNAME_VARIANT_RE,
-        _GATEWAY_ENV_RE, _GATEWAY_JUDGE_FIELD_RE,
-    ]
+    # Reporting-only match counts. NOTE: the write decision below is gated on
+    # `sanitized != raw`, never on this number -- a hand-maintained regex list
+    # silently under-counts the moment a rule is added to sanitize_text() but
+    # not here, and a file whose only leak came from an uncounted rule would
+    # then be reported as clean and never written out.
+    count_res = list(_COUNTED_RULES)
     if host:
         # re.escape'd bare-host regex catches the recall/live_guard leaks.
         count_res.append(re.compile(re.escape(host)))
@@ -365,6 +381,8 @@ def main():
         sanitized = sanitize_text(raw, private_host=host)
 
         n_changes = sum(len(r.findall(raw)) for r in count_res)
+        # Authoritative signal: did any rule actually rewrite this file?
+        changed = sanitized != raw
 
         errors = validate_sanitization(raw, sanitized, str(filepath),
                                        private_host=host)
@@ -378,7 +396,7 @@ def main():
 
         total_replacements += n_changes
 
-        if n_changes > 0 and not errors:
+        if changed and not errors:
             if args.outdir:
                 out_path = Path(args.outdir) / rel
                 out_path.parent.mkdir(parents=True, exist_ok=True)

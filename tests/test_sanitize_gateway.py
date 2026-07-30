@@ -174,3 +174,43 @@ def test_validate_passes_when_neutralised(without_host):
     clean = '{"judge_api_base": "<internal-gateway>", "seed": 20260729}'
     errs = validate_sanitization('{"seed": 20260729}', clean, "fake.json")
     assert errs == []
+
+
+# -- Counter / applier agreement ---------------------------------------
+# The reported match count and the set of rules that actually rewrite a file
+# must come from ONE list. When they were maintained separately, every
+# Windows/VSCode rule applied in sanitize_text() but was invisible to the
+# counter, so a file whose only leak was e.g. CLAUDE_CODE_EXECPATH counted 0
+# replacements, was reported clean, and was never written out.
+
+def test_counted_rules_are_derived_from_the_applied_rules():
+    applied = [rgx for rgx, _ in sanitize_traces._HOST_INDEPENDENT_RULES]
+    assert list(sanitize_traces._COUNTED_RULES) == applied
+
+
+def test_every_applied_rule_is_counted(without_host):
+    """No host-independent rule may fire without incrementing the count."""
+    samples = {
+        "CLAUDE_CODE_EXECPATH=/home/user/.vscode/extensions/x/bin",
+        r"C:\\Users\\Administrator\\AppData",
+        "USERNAME=Administrator",
+        "Administrator   197121",
+        "(197108/Administrator)",
+        "COMPUTERNAME=DESKTOP-ABC1",
+        r"LOGONSERVER=\\\\DESKTOP-ABC1",
+        "DESKTOP-10UVREO",
+        r"INIT_CWD=C:\\Project\\MCPHunt\\scripts",
+        "C:UsersAdministrator",
+        "/Users/someone/",
+        "PyCharmProjects",
+        "lihaonan",
+        "ANTHROPIC_BASE_URL=https://private-gw.example/v1",
+        '"judge_api_base": "https://private-gw.example/v1"',
+    }
+    for raw in samples:
+        rewritten = sanitize_text(raw) != raw
+        counted = sum(len(r.findall(raw))
+                      for r in sanitize_traces._COUNTED_RULES) > 0
+        assert rewritten == counted, (
+            f"counter and applier disagree on {raw!r}: "
+            f"rewritten={rewritten} counted={counted}")
