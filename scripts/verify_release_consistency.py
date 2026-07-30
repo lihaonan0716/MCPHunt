@@ -11,9 +11,9 @@ Run before submission to confirm:
   2. Agent trace files exist for the expected models.
   3. Unit tests pass.
   4. relabel_traces.py runs successfully on a trace file.
-  5. Croissant metadata validates.
+  5. Croissant metadata validates (named + anonymous identities).
   6. paper.tex cite keys resolve in references.bib.
-  7. HuggingFace staging bundle present.
+  7. Both HuggingFace staging bundles present, complete, and leak-free.
   8. No stale project-name references remain.
 
 Exits 0 on full success, non-zero on any failure.
@@ -176,12 +176,6 @@ def check_relabel(result: CheckResult) -> None:
 
 def check_croissant(result: CheckResult) -> None:
     release_dir = REPO_ROOT / "artifacts" / "release"
-    fname = "croissant.json"
-    path = release_dir / fname
-    if not path.exists():
-        result.error(f"missing Croissant file: {fname}")
-        return
-    meta = json.loads(path.read_text(encoding="utf-8"))
     required_fields = [
         "@context", "@type", "name", "description",
         "license", "version",
@@ -191,18 +185,28 @@ def check_croissant(result: CheckResult) -> None:
         "rai:dataAnnotationProtocol", "rai:dataLimitation",
         "rai:personalSensitiveInformation",
     ]
-    missing = [f for f in required_fields if f not in meta]
-    if missing:
-        result.error(f"{fname} missing required core fields: {missing}")
-    else:
-        result.passed(f"Croissant core fields valid: {fname}")
-    missing_rai = [f for f in rai_fields if f not in meta]
-    if missing_rai:
-        result.error(f"{fname} missing RAI fields: {missing_rai}")
-    else:
-        result.passed(f"Croissant RAI fields valid: {fname}")
-    if STALE_NAME in json.dumps(meta):
-        result.error(f"{fname} still contains stale name reference")
+    # Every release identity is validated, not just the named one: the anonymous
+    # copy is the file reviewers actually see, so it must satisfy the same core
+    # and RAI requirements.
+    for variant, config in _staging_variants().items():
+        fname = config["croissant"]
+        path = release_dir / fname
+        if not path.exists():
+            result.error(f"missing Croissant file for '{variant}': {fname}")
+            continue
+        meta = json.loads(path.read_text(encoding="utf-8"))
+        missing = [f for f in required_fields if f not in meta]
+        if missing:
+            result.error(f"{fname} missing required core fields: {missing}")
+        else:
+            result.passed(f"Croissant core fields valid: {fname}")
+        missing_rai = [f for f in rai_fields if f not in meta]
+        if missing_rai:
+            result.error(f"{fname} missing RAI fields: {missing_rai}")
+        else:
+            result.passed(f"Croissant RAI fields valid: {fname}")
+        if STALE_NAME in json.dumps(meta):
+            result.error(f"{fname} still contains stale name reference")
 
 
 # ── Check 6: Paper citations ─────────────────────────────────────
@@ -230,51 +234,115 @@ def check_paper_citations(result: CheckResult) -> None:
 
 # ── Check 7: HuggingFace staging ─────────────────────────────────
 
+def _staging_variants() -> dict:
+    """Load the staging-variant table from the release preparation script.
+
+    Read rather than duplicated: a bundle added there must be verified here, and
+    a hardcoded copy is exactly how the anonymous bundle previously escaped
+    every check.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_prep_hf_release", REPO_ROOT / "scripts" / "prepare_huggingface_release.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.STAGING_VARIANTS
+
+
+# Files that must never sit inside a bundle: the documented upload command
+# copies the staging directory recursively, so a pre-sanitization backup would
+# publish exactly the PII sanitization removed.
+_UPLOAD_FORBIDDEN_SUFFIXES = (".presan.bak",)
+
+
 def check_huggingface_staging(result: CheckResult) -> None:
-    staging = REPO_ROOT / "artifacts" / "huggingface-staging" / "mcphunt-agent-traces"
-    if not staging.exists():
-        result.warn("artifacts/huggingface-staging/mcphunt-agent-traces not present (run `make hf-stage`)")
+    for variant, config in _staging_variants().items():
+        staging = config["dir"] / "mcphunt-agent-traces"
+        label = f"HF staging [{variant}]"
+        if not staging.exists():
+            result.warn(f"{label} not present at "
+                        f"{staging.relative_to(REPO_ROOT)} (run `make release`)")
+            continue
+        for sub_file in ("README.md", "croissant.json"):
+            path = staging / sub_file
+            if not path.exists():
+                result.warn(f"{label} missing: {sub_file}")
+            else:
+                result.passed(f"{label} present: {sub_file}")
+                if STALE_NAME in path.read_text(encoding="utf-8"):
+                    result.error(f"stale name reference in {variant}/{sub_file}")
+        for subdir in ("main", "mitigation", "live_guard_defense",
+                       "browser_replication", "meta", "recall_evaluation"):
+            path = staging / subdir
+            if path.is_dir() and any(path.iterdir()):
+                result.passed(f"{label} directory: {subdir}/ "
+                              f"({sum(1 for _ in path.glob('*'))} files)")
+            else:
+                result.error(f"{label} directory empty or missing: {subdir}/")
+
+        stray = [p for p in staging.rglob("*")
+                 if p.is_file() and p.name.endswith(_UPLOAD_FORBIDDEN_SUFFIXES)]
+        if stray:
+            result.error(
+                f"{label} contains {len(stray)} upload-forbidden file(s) "
+                f"(e.g. {stray[0].relative_to(staging)}); these carry "
+                "pre-sanitization content and the upload is recursive")
+        else:
+            result.passed(f"{label} free of pre-sanitization backups")
+
+        # Every file the Croissant distribution declares must actually ship,
+        # or the bundle promises a download that 404s.
+        _check_declared_files_present(result, staging, label)
+
+        # Cross-consistency: staging croissant must match its release
+        # source-of-truth on descriptive/provenance fields. Only fields that are
+        # intentionally varied per identity are exempt.
+        _check_staging_matches_release(result, staging, config, label)
+
+
+# Fields intentionally allowed to differ between the release source-of-truth and
+# a staged bundle. Empty by design: each identity now has its OWN generated
+# croissant (croissant.json / croissant.anon.json), so the staged copy must be a
+# byte-for-byte match of its source rather than an approved-divergence copy.
+_STAGING_EXEMPT_KEYS: frozenset = frozenset()
+
+
+def _check_declared_files_present(result: CheckResult, staging: Path,
+                                  label: str) -> None:
+    path = staging / "croissant.json"
+    if not path.exists():
+        return  # presence already reported above
+    try:
+        meta = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 - report, don't crash the suite
+        result.error(f"{label} croissant not parseable: {exc}")
         return
-    for sub_file in ("README.md", "croissant.json"):
-        path = staging / sub_file
-        if not path.exists():
-            result.warn(f"HF staging missing: {sub_file}")
-        else:
-            result.passed(f"HF staging present: {sub_file}")
-            text = path.read_text(encoding="utf-8")
-            if STALE_NAME in text:
-                result.error(f"stale name reference in {sub_file}")
-    for subdir in ("main", "mitigation", "live_guard_defense", "browser_replication", "meta"):
-        path = staging / subdir
-        if path.is_dir() and any(path.iterdir()):
-            result.passed(f"HF staging directory: {subdir}/ ({sum(1 for _ in path.glob('*'))} files)")
-        else:
-            result.warn(f"HF staging directory empty or missing: {subdir}/")
-
-    # Cross-consistency: staging croissant must match the release
-    # source-of-truth on descriptive/provenance fields. Only fields that are
-    # intentionally anonymized for the HF review copy are exempt.
-    _check_staging_matches_release(result, staging)
-
-
-# Fields intentionally allowed to differ between release and HF staging
-# croissant (the staging copy is anonymized for double-blind dataset review).
-_STAGING_EXEMPT_KEYS = frozenset({"citeAs"})
+    missing = [obj.get("contentUrl") for obj in meta.get("distribution", [])
+               if obj.get("contentUrl")
+               and not (staging / obj["contentUrl"]).exists()]
+    if missing:
+        result.error(f"{label} croissant declares {len(missing)} file(s) that "
+                     f"are not in the bundle: {missing[:5]}")
+    else:
+        n = len(meta.get("distribution", []))
+        result.passed(f"{label} ships every one of {n} declared file(s)")
 
 
 def _staging_sync_keys(rel: dict, stg: dict) -> list:
     """Fields that MUST stay in sync: descriptive text plus every top-level
-    RAI provenance field present in either croissant, minus the exempt
-    (anonymized) keys. Built dynamically so a newly added rai:* field is
-    covered automatically instead of silently escaping a hardcoded list."""
+    RAI provenance field present in either croissant, minus any exempt keys.
+    Built dynamically so a newly added rai:* field is covered automatically
+    instead of silently escaping a hardcoded list."""
     keys = {"description"} | {
         key for key in (rel.keys() | stg.keys()) if key.startswith("rai:")
     }
     return sorted(keys - _STAGING_EXEMPT_KEYS)
 
 
-def _check_staging_matches_release(result: CheckResult, staging: Path) -> None:
-    release_path = REPO_ROOT / "artifacts" / "release" / "croissant.json"
+def _check_staging_matches_release(result: CheckResult, staging: Path,
+                                   config: dict, label: str) -> None:
+    release_path = REPO_ROOT / "artifacts" / "release" / config["croissant"]
     staging_path = staging / "croissant.json"
     if not (release_path.exists() and staging_path.exists()):
         return  # presence already reported above
@@ -282,29 +350,32 @@ def _check_staging_matches_release(result: CheckResult, staging: Path) -> None:
         rel = json.loads(release_path.read_text(encoding="utf-8"))
         stg = json.loads(staging_path.read_text(encoding="utf-8"))
     except Exception as exc:  # noqa: BLE001 - report, don't crash the suite
-        result.error(f"croissant staging/release not parseable: {exc}")
+        result.error(f"{label} croissant staging/release not parseable: {exc}")
         return
     sync_keys = _staging_sync_keys(rel, stg)
     rai_count = sum(1 for key in sync_keys if key.startswith("rai:"))
-    drift = []
-    for key in sync_keys:
-        r, s = rel.get(key), stg.get(key)
-        if r is None and s is None:
-            continue
-        if r != s:
+    drift = [key for key in sync_keys
+             if not (rel.get(key) is None and stg.get(key) is None)
+             and rel.get(key) != stg.get(key)]
+    # The staged copy is a plain copy of its identity's generated file, so the
+    # whole document -- distribution and recordSet included -- must agree.
+    for key in ("distribution", "recordSet", "citeAs", "url",
+                "creator", "publisher"):
+        if rel.get(key) != stg.get(key) and key not in drift:
             drift.append(key)
     if drift:
         result.error(
-            "HF staging croissant drifted from release on "
-            f"{drift}; re-run scripts/prepare_huggingface_release.py "
-            "(or sync those fields). Exempt (anonymized) keys: "
-            f"{sorted(_STAGING_EXEMPT_KEYS)}"
+            f"{label} croissant drifted from "
+            f"artifacts/release/{config['croissant']} on {sorted(drift)}; "
+            "re-run scripts/generate_croissant_metadata.py then "
+            "scripts/prepare_huggingface_release.py"
         )
     else:
         result.passed(
-            "HF staging croissant matches release on descriptive/RAI fields "
-            f"(checked {len(sync_keys)} fields including {rai_count} RAI "
-            f"fields; exempt: {sorted(_STAGING_EXEMPT_KEYS)})"
+            f"{label} croissant matches artifacts/release/"
+            f"{config['croissant']} (checked {len(sync_keys)} descriptive/RAI "
+            f"fields including {rai_count} RAI fields, plus distribution, "
+            "recordSet and identity fields)"
         )
 
 

@@ -329,6 +329,12 @@ def main() -> None:
     hn1_hn = [t for t in primary if t["env_type"] == "hard_neg_v1"
               and TASK_REGISTRY[t["task_id"]].task_type == "hard_negative"]
     cmd("twoByTwoCrossN", str(len(rv1_risk)))
+    # Raw success counts are emitted alongside the rounded percentages so
+    # downstream analyses (compute_hard_negative_ci.py) can cross-check their
+    # own trace-level pairing against this generator instead of inverting a
+    # 1-decimal percentage.
+    cmd("twoByTwoCrossProdK", str(sum(is_unsafe(t) for t in rv1_risk)))
+    cmd("twoByTwoCrossPlacK", str(sum(is_unsafe(t) for t in hn1_risk)))
     cmd("twoByTwoCrossProd", fmt_pct(sum(is_unsafe(t) for t in rv1_risk), len(rv1_risk)))
     cmd("twoByTwoCrossPlac", fmt_pct(sum(is_unsafe(t) for t in hn1_risk), len(hn1_risk)))
     cmd("twoByTwoSurfProdN", str(len(rv1_benign)))

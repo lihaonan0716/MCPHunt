@@ -44,6 +44,7 @@ workspace/
 
 # HuggingFace staging (large, regenerable)
 artifacts/huggingface-staging/
+artifacts/huggingface-staging-anon/
 artifacts/paper-build/
 artifacts/reports/
 

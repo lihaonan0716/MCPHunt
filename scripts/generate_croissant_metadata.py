@@ -5,8 +5,10 @@ Generate Croissant metadata for the MCPHunt agent traces dataset.
 NeurIPS 2026 Evaluations & Datasets Track requires Croissant format with
 core and Responsible AI (RAI) fields.
 
-Outputs:
+Outputs (both anonymous on the submission branch; two filenames kept for
+tooling compatibility):
   - artifacts/release/croissant.json
+  - artifacts/release/croissant.anon.json
 
 Croissant spec: https://docs.mlcommons.org/croissant/docs/croissant-spec.html
 
@@ -62,8 +64,39 @@ def _crs_audit_stats() -> Dict[str, Any]:
         "resamples": sa.BOOTSTRAP_RESAMPLES,
     }
 
-# TODO: Update after uploading to HuggingFace
-HF_DATASET_URL = "https://huggingface.co/datasets/mcphunt-benchmark/mcphunt-agent-traces"
+# The submission branch keeps two emitted filenames only for tooling
+# compatibility. Both variants are anonymous and point at the anonymous
+# dataset repository.
+RELEASE_IDENTITIES = {
+    "named": {
+        "filename": "croissant.json",
+        "owner": "Anonymous",
+        "authors": "Anonymous",
+        "url": "https://huggingface.co/datasets/mcphunt-benchmark/mcphunt-agent-traces",
+        "citation": (
+            "@misc{mcphunt2026anonymous,\n"
+            "  title = {MCPHunt: An Evaluation Framework for Cross-Boundary "
+            "Data Propagation in Multi-Server MCP Agents},\n"
+            "  author = {Anonymous},\n"
+            "  year = {2026}\n"
+            "}"
+        ),
+    },
+    "anon": {
+        "filename": "croissant.anon.json",
+        "owner": "Anonymous",
+        "authors": "Anonymous",
+        "url": "https://huggingface.co/datasets/mcphunt-benchmark/mcphunt-agent-traces",
+        "citation": (
+            "@misc{mcphunt2026anonymous,\n"
+            "  title = {MCPHunt: An Evaluation Framework for Cross-Boundary "
+            "Data Propagation in Multi-Server MCP Agents},\n"
+            "  author = {Anonymous},\n"
+            "  year = {2026}\n"
+            "}"
+        ),
+    },
+}
 
 MAIN_MODELS = [
     "gpt_5_4", "gpt_5_2", "deepseek_v4_flash",
@@ -124,7 +157,7 @@ def _field(field_id: str, description: str, dtype: str, json_path: str, parent: 
     }
 
 
-def build_metadata() -> Dict[str, Any]:
+def build_metadata(identity: Dict[str, str]) -> Dict[str, Any]:
     crs = _crs_audit_stats()
     crs_protocol = (
         "The CRS labels were not crowdsourced. A post-submission independent "
@@ -204,6 +237,28 @@ def build_metadata() -> Dict[str, Any]:
         "contentUrl": "meta/live_guard_deepseek_v4_flash_paired.json",
         "encodingFormat": "application/json",
     })
+    # Risky-vs-hard-negative matched 2x2 (paired on task_id over the frozen
+    # registry's risk tasks), its Tango score interval, and the exact McNemar
+    # p-value. Declared here so the dataset card, the shipped files, and the
+    # Croissant distribution cannot disagree about what the bundle contains.
+    distribution.append({
+        "@type": "cr:FileObject",
+        "@id": "meta_hard_negative_ci",
+        "name": "meta/hard_negative_ci.json",
+        "contentUrl": "meta/hard_negative_ci.json",
+        "encodingFormat": "application/json",
+    })
+
+    # Judge-based recall diagnostic. Its own split rather than a meta/ file: it
+    # is a single-record estimate over a seeded sample, not an aggregate of the
+    # trace splits, and it gets its own RecordSet below.
+    distribution.append({
+        "@type": "cr:FileObject",
+        "@id": "recall_evaluation_estimation",
+        "name": "recall_evaluation/recall_estimation.json",
+        "contentUrl": "recall_evaluation/recall_estimation.json",
+        "encodingFormat": "application/json",
+    })
 
     trace_fields = [
         _field("trace_id", "Unique trace identifier.", "sc:Text", "$.traces[*].trace_id", "main_gpt_5_4"),
@@ -220,14 +275,29 @@ def build_metadata() -> Dict[str, Any]:
         _field("mitigation_level", "Prompt mitigation level: none, generic, moderate, detailed.", "sc:Text", "$.traces[*].mitigation_level", "main_gpt_5_4"),
     ]
 
+    _RC = "recall_evaluation_estimation"
+    recall_fields = [
+        _field("recall_estimand", "Name of the quantity being estimated (pooled_detector_clean_miss_prevalence).", "sc:Text", "$.estimand", _RC),
+        _field("recall_complete_case_point", "Complete-case point estimate of detector-clean miss prevalence (judge-estimated).", "sc:Float", "$.detector_clean_miss_prevalence_complete_case", _RC),
+        _field("recall_ci_method", "Confidence-interval method (Wilson score 95% primary).", "sc:Text", "$.ci_method", _RC),
+        _field("recall_seed", "Sampling seed for the seeded SRS draw.", "sc:Integer", "$.seed", _RC),
+        _field("recall_judge_model", "LLM judge model used to estimate misses.", "sc:Text", "$.judge_model", _RC),
+    ]
+    # _field() names the field after its @id; the released schema uses the raw
+    # JSON key as the field name, so restore those without duplicating @ids.
+    for fld, key in zip(recall_fields, [
+            "estimand", "detector_clean_miss_prevalence_complete_case",
+            "ci_method", "seed", "judge_model"]):
+        fld["name"] = key
+
     meta = {
         "@context": _croissant_context(),
         "@type": "sc:Dataset",
         "conformsTo": "http://mlcommons.org/croissant/1.0",
         "version": DATASET_VERSION,
         "license": "https://creativecommons.org/licenses/by/4.0/",
-        "creator": {"@type": "sc:Organization", "name": "Anonymous"},
-        "publisher": {"@type": "sc:Organization", "name": "Anonymous"},
+        "creator": {"@type": "sc:Organization", "name": identity["owner"]},
+        "publisher": {"@type": "sc:Organization", "name": identity["owner"]},
         "datePublished": PUBLICATION_DATE,
         "name": "MCPHunt Agent Traces",
         "description": (
@@ -249,15 +319,8 @@ def build_metadata() -> Dict[str, Any]:
             "data propagation", "cross-boundary", "canary tracking",
             "tool-use", "benchmark", "evaluation",
         ],
-        "url": HF_DATASET_URL,
-        "citeAs": (
-            "@misc{mcphunt2026,\n"
-            "  title = {MCPHunt: An Evaluation Framework for Cross-Boundary "
-            "Data Propagation in Multi-Server MCP Agents},\n"
-            "  author = {Anonymous},\n"
-            "  year = {2026}\n"
-            "}"
-        ),
+        "url": identity["url"],
+        "citeAs": identity["citation"],
         "distribution": distribution,
         "recordSet": [
             {
@@ -270,7 +333,22 @@ def build_metadata() -> Dict[str, Any]:
                     "canary-based propagation labels."
                 ),
                 "field": trace_fields,
-            }
+            },
+            {
+                "@type": "cr:RecordSet",
+                "@id": "recall_evaluation",
+                "name": "recall_evaluation",
+                "description": (
+                    "Single-record LLM-judge recall estimation over a seeded "
+                    "SRS sample (n=150, seed=20260729) of detector-clean "
+                    "no-defense traces. Estimates the prevalence of secret "
+                    "propagation missed by the exact-substring detector within "
+                    "the detector-clean pool. Point estimates are "
+                    "judge-estimated (Claude Opus judge), not human ground "
+                    "truth; confidence intervals are Wilson score 95%."
+                ),
+                "field": recall_fields,
+            },
         ],
         # Responsible AI fields
         "rai:dataCollection": (
@@ -354,11 +432,15 @@ def build_metadata() -> Dict[str, Any]:
 def main(out_dir: Path) -> List[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    metadata = build_metadata()
-    out_path = out_dir / "croissant.json"
-    out_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
-
-    print(f"Wrote Croissant metadata: {out_path.relative_to(REPO_ROOT)}")
+    written = []
+    for variant, identity in RELEASE_IDENTITIES.items():
+        metadata = build_metadata(identity)
+        out_path = out_dir / identity["filename"]
+        out_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False),
+                            encoding="utf-8")
+        print(f"Wrote Croissant metadata ({variant}): "
+              f"{out_path.relative_to(REPO_ROOT)}")
+        written.append(out_path)
 
     # Clean up old split Croissant files if they exist
     for old in ["croissant_discovery.json", "croissant_validation.json"]:
@@ -367,7 +449,7 @@ def main(out_dir: Path) -> List[Path]:
             old_path.unlink()
             print(f"  Removed old: {old}")
 
-    return [out_path]
+    return written
 
 
 if __name__ == "__main__":
