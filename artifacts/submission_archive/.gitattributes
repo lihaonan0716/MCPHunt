@@ -1,0 +1,7 @@
+# Byte-exactness guard for the submission archive.
+#
+# The repo runs with core.autocrlf=true, which would rewrite these files to
+# CRLF on checkout. Files here are archived verbatim and their SHA-256 is
+# recorded in README.md, so any line-ending rewrite would silently invalidate
+# the recorded hash. Pin them to LF on every platform.
+* text eol=lf
