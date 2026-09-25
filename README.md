@@ -110,7 +110,7 @@ completed trace.
 ```bash
 make test       # run unit tests
 make relabel    # recompute risk signals from raw trace events
-make sanitize   # sanitize traces for anonymous release
+make sanitize   # strip collection-environment PII from traces (required before release)
 ```
 
 ---

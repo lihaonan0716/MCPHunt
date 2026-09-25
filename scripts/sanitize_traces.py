@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Sanitize trace JSON files for anonymous release.
+"""Strip collection-environment PII from trace JSON files.
+
+Required before any public release. This is NOT a double-blind measure and did
+not retire with the review phase: traces capture the machine they were collected
+on, so local usernames, absolute paths, and host identifiers must be removed
+whether or not the release is anonymous.
 
 Replaces all identifying information (local usernames, machine-specific
 paths) with generic placeholders.  The sanitization is:

@@ -2,9 +2,9 @@
 
 Pins the specific release/reproduction guarantees that must not drift:
 `make download && make paired` restores the paired-analysis default inputs,
-the named/anonymous staging bundles are both first-class outputs, Croissant
-declares the paired artifacts, and the dataset card documents where paired
-analyses are recomputed before staging copies them into `meta/`.
+the staging bundle stays in step with the Croissant identities it ships,
+Croissant declares the paired artifacts, and the dataset card documents where
+paired analyses are recomputed before staging copies them into `meta/`.
 """
 from __future__ import annotations
 
@@ -97,26 +97,30 @@ class ReleaseBundleContractTest(unittest.TestCase):
         self.assertNotIn("all: relabel reproduce paired", makefile)
         self.assertIn("make download && make paired", makefile)
 
-    def test_dual_staging_variants_match_croissant_identities(self) -> None:
+    def test_staging_variants_match_croissant_identities(self) -> None:
         self.assertEqual(set(PREP.STAGING_VARIANTS), set(CRO.RELEASE_IDENTITIES))
         for key, staging in PREP.STAGING_VARIANTS.items():
             self.assertEqual(staging["croissant"],
                              CRO.RELEASE_IDENTITIES[key]["filename"])
-        self.assertEqual(PREP.STAGING_VARIANTS["anon"]["authors"], "Anonymous")
 
-    def test_anonymous_citation_omits_arxiv_and_named_identity(self) -> None:
-        anon_meta = CRO.build_metadata(CRO.RELEASE_IDENTITIES["anon"])
-        anon_cite = anon_meta["citeAs"]
-        self.assertNotIn("2604.27819", anon_cite)
-        self.assertNotIn("arxiv.org/abs", anon_cite)
-        self.assertNotIn("Li, Haonan", anon_cite)
-        self.assertIn("Anonymous", anon_cite)
+    def test_no_anonymous_release_identity_remains(self) -> None:
+        # The anonymous review identity was retired after acceptance. This pins
+        # it as retired so a merge or a copied dict cannot quietly revive an
+        # identity that would publish under "Anonymous".
+        self.assertNotIn("anon", CRO.RELEASE_IDENTITIES)
+        self.assertNotIn("anon", PREP.STAGING_VARIANTS)
 
-        anon_card = PREP._dataset_card(PREP.STAGING_VARIANTS["anon"])
-        self.assertNotIn("2604.27819", anon_card)
-        self.assertNotIn("arxiv.org/abs", anon_card)
-        self.assertNotIn("Li, Haonan", anon_card)
-        self.assertIn("author={Anonymous}", anon_card)
+    def test_release_dir_has_no_orphaned_croissant(self) -> None:
+        # generate_croissant_metadata.py only ever writes files; it does not
+        # remove the output of an identity that has since been retired. Without
+        # this check a stale croissant could sit in the public release dir
+        # indefinitely, still declaring the old identity.
+        release_dir = REPO_ROOT / "artifacts" / "release"
+        declared = {i["filename"] for i in CRO.RELEASE_IDENTITIES.values()}
+        on_disk = {p.name for p in release_dir.glob("croissant*.json")}
+        self.assertEqual(
+            on_disk, declared,
+            f"orphaned croissant file(s): {sorted(on_disk - declared)}")
 
     def test_named_citation_keeps_full_arxiv_reference(self) -> None:
         named_meta = CRO.build_metadata(CRO.RELEASE_IDENTITIES["named"])

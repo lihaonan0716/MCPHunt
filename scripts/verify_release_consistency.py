@@ -11,9 +11,9 @@ Run before submission to confirm:
   2. Agent trace files exist for the expected models.
   3. Unit tests pass.
   4. relabel_traces.py runs successfully on a trace file.
-  5. Croissant metadata validates (named + anonymous identities).
+  5. Croissant metadata validates for every release identity.
   6. paper.tex cite keys resolve in references.bib.
-  7. Both HuggingFace staging bundles present, complete, and leak-free.
+  7. Every HuggingFace staging bundle present, complete, and leak-free.
   8. No stale project-name references remain.
 
 Exits 0 on full success, non-zero on any failure.
@@ -185,9 +185,8 @@ def check_croissant(result: CheckResult) -> None:
         "rai:dataAnnotationProtocol", "rai:dataLimitation",
         "rai:personalSensitiveInformation",
     ]
-    # Every release identity is validated, not just the named one: the anonymous
-    # copy is the file reviewers actually see, so it must satisfy the same core
-    # and RAI requirements.
+    # Loop over identities rather than checking one by name: whatever ships must
+    # satisfy the same core and RAI requirements, however many identities exist.
     for variant, config in _staging_variants().items():
         fname = config["croissant"]
         path = release_dir / fname
@@ -302,9 +301,9 @@ def check_huggingface_staging(result: CheckResult) -> None:
 
 
 # Fields intentionally allowed to differ between the release source-of-truth and
-# a staged bundle. Empty by design: each identity now has its OWN generated
-# croissant (croissant.json / croissant.anon.json), so the staged copy must be a
-# byte-for-byte match of its source rather than an approved-divergence copy.
+# a staged bundle. Empty by design: each identity has its OWN generated
+# croissant, so the staged copy must be a byte-for-byte match of its source
+# rather than an approved-divergence copy.
 _STAGING_EXEMPT_KEYS: frozenset = frozenset()
 
 

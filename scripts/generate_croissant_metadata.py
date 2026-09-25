@@ -63,9 +63,12 @@ def _crs_audit_stats() -> Dict[str, Any]:
         "resamples": sa.BOOTSTRAP_RESAMPLES,
     }
 
-# Release identities. The named and anonymous bundles differ ONLY in these
-# fields; every content claim (distribution, recordSet, RAI) is shared and
-# generated once, so the two files cannot drift apart on what the bundle holds.
+# Release identity. The dict shape is kept even though only one identity
+# remains: build_metadata() takes an identity and main() iterates the table, so
+# retiring an identity is a data change rather than a code change. The anonymous
+# review identity was dropped after acceptance (2026-09); the bundle already
+# published under it stays untouched, because public rebuttal comments link into
+# it by commit hash.
 # Keys match STAGING_VARIANTS in scripts/prepare_huggingface_release.py, which
 # copies the matching file into each staging bundle as croissant.json.
 RELEASE_IDENTITIES = {
@@ -74,8 +77,11 @@ RELEASE_IDENTITIES = {
         "owner": "Haonan Li",
         "authors": "Li, Haonan and Sun, Tianjun and Wang, Yongqing and "
                    "Zhang, Qisheng",
-        # TODO: Update after uploading to HuggingFace
         "url": "https://huggingface.co/datasets/lihaonan0716/mcphunt-agent-traces",
+        # TODO(camera-ready): switch to @inproceedings once NeurIPS publishes the
+        # ED Track booktitle string. Keep the arXiv fields -- the preprint exists
+        # and has been cited. Do not guess the venue string; it would ship in the
+        # camera-ready.
         "citation": (
             "@article{mcphunt2026,\n"
             "  title = {MCPHunt: An Evaluation Framework for Cross-Boundary "
@@ -87,20 +93,6 @@ RELEASE_IDENTITIES = {
             "  archivePrefix = {arXiv},\n"
             "  primaryClass = {cs.CR},\n"
             "  url = {https://arxiv.org/abs/2604.27819}\n"
-            "}"
-        ),
-    },
-    "anon": {
-        "filename": "croissant.anon.json",
-        "owner": "Anonymous",
-        "authors": "Anonymous",
-        "url": "https://huggingface.co/datasets/mcphunt-benchmark/mcphunt-agent-traces",
-        "citation": (
-            "@misc{mcphunt2026anonymous,\n"
-            "  title = {MCPHunt: An Evaluation Framework for Cross-Boundary "
-            "Data Propagation in Multi-Server MCP Agents},\n"
-            "  author = {Anonymous},\n"
-            "  year = {2026}\n"
             "}"
         ),
     },

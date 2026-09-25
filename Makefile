@@ -48,7 +48,7 @@ paired:
 	$(PYTHON) scripts/compute_hard_negative_ci.py
 	$(PYTHON) scripts/analyze_paired_live_guard.py
 
-## Sanitize traces for anonymous release
+## Strip collection-environment PII (local usernames, absolute paths, host IDs)
 sanitize:
 	$(PYTHON) scripts/sanitize_traces.py --apply
 

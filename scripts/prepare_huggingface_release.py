@@ -23,10 +23,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 RESULTS_DIR = REPO_ROOT / "results"
 RELEASE_DIR = REPO_ROOT / "artifacts" / "release"
 
-# Two staging bundles are built from the SAME staged files and differ only in
-# the identity fields (author/creator/publisher/repo URL). Keeping them
-# parameterised here — rather than syncing one by hand — is what stops the
-# anonymous bundle from silently missing a newly added artifact.
+# Staging bundles are parameterised by identity (author/creator/publisher/repo
+# URL) rather than hand-synced, so a newly added artifact cannot go missing from
+# one bundle. Only the named identity remains: the anonymous review bundle was
+# retired after acceptance (2026-09). The table shape is kept so retiring or
+# adding an identity stays a data change.
 STAGING_VARIANTS = {
     "named": {
         "dir": REPO_ROOT / "artifacts" / "huggingface-staging",
@@ -47,20 +48,6 @@ STAGING_VARIANTS = {
         # Matching RELEASE_IDENTITIES entry in generate_croissant_metadata.py;
         # both files declare identical content and differ only in identity.
         "croissant": "croissant.json",
-    },
-    "anon": {
-        "dir": REPO_ROOT / "artifacts" / "huggingface-staging-anon",
-        "hf_repo": "mcphunt-benchmark/mcphunt-agent-traces",
-        "authors": "Anonymous",
-        "citation": (
-            "@misc{mcphunt2026anonymous,\n"
-            "  title={MCPHunt: An Evaluation Framework for Cross-Boundary Data Propagation\n"
-            "         in Multi-Server MCP Agents},\n"
-            "  author={Anonymous},\n"
-            "  year={2026}\n"
-            "}"
-        ),
-        "croissant": "croissant.anon.json",
     },
 }
 # Back-compat alias: the default (named) bundle path other scripts check.

@@ -32,10 +32,12 @@ env/
 .omc/
 .omx/
 
-# Paper and arXiv build (not version-controlled; submitted separately)
+# Paper source (not version-controlled here; tracked in its own nested repo)
 paper/
+# arXiv build output. The 2026-04-30 snapshot was deleted post-acceptance, but
+# the rule stays: any future rebuild lands here, and losing the rule would let
+# a LaTeX build tree and paper PDF reach this public repo.
 arxiv/
-scripts/build_arxiv.sh
 
 # Experiment data (published via HuggingFace)
 results/
@@ -45,7 +47,6 @@ workspace/
 
 # HuggingFace staging (large, regenerable)
 artifacts/huggingface-staging/
-artifacts/huggingface-staging-anon/
 artifacts/paper-build/
 artifacts/reports/
 
