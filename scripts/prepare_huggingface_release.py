@@ -33,11 +33,15 @@ STAGING_VARIANTS = {
         "dir": REPO_ROOT / "artifacts" / "huggingface-staging",
         "hf_repo": "lihaonan0716/mcphunt-agent-traces",
         "authors": "Li, Haonan and Sun, Tianjun and Wang, Yongqing and Zhang, Qisheng",
+        # Venue string from neurips_2026.sty:62; keep in step with the citation
+        # in generate_croissant_metadata.py (pinned by the contract tests).
         "citation": (
-            "@article{mcphunt2026,\n"
+            "@inproceedings{mcphunt2026,\n"
             "  title={MCPHunt: An Evaluation Framework for Cross-Boundary Data Propagation\n"
             "         in Multi-Server MCP Agents},\n"
             "  author={Li, Haonan and Sun, Tianjun and Wang, Yongqing and Zhang, Qisheng},\n"
+            "  booktitle={Advances in Neural Information Processing Systems (NeurIPS 2026),\n"
+            "             Track on Evaluations and Datasets},\n"
             "  year={2026},\n"
             "  eprint={2604.27819},\n"
             "  archivePrefix={arXiv},\n"

@@ -71,7 +71,7 @@
     "evaluation"
   ],
   "url": "https://huggingface.co/datasets/lihaonan0716/mcphunt-agent-traces",
-  "citeAs": "@article{mcphunt2026,\n  title = {MCPHunt: An Evaluation Framework for Cross-Boundary Data Propagation in Multi-Server MCP Agents},\n  author = {Li, Haonan and Sun, Tianjun and Wang, Yongqing and Zhang, Qisheng},\n  year = {2026},\n  eprint = {2604.27819},\n  archivePrefix = {arXiv},\n  primaryClass = {cs.CR},\n  url = {https://arxiv.org/abs/2604.27819}\n}",
+  "citeAs": "@inproceedings{mcphunt2026,\n  title = {MCPHunt: An Evaluation Framework for Cross-Boundary Data Propagation in Multi-Server MCP Agents},\n  author = {Li, Haonan and Sun, Tianjun and Wang, Yongqing and Zhang, Qisheng},\n  booktitle = {Advances in Neural Information Processing Systems (NeurIPS 2026), Track on Evaluations and Datasets},\n  year = {2026},\n  eprint = {2604.27819},\n  archivePrefix = {arXiv},\n  primaryClass = {cs.CR},\n  url = {https://arxiv.org/abs/2604.27819}\n}",
   "distribution": [
     {
       "@type": "cr:FileObject",

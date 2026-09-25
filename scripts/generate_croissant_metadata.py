@@ -78,16 +78,18 @@ RELEASE_IDENTITIES = {
         "authors": "Li, Haonan and Sun, Tianjun and Wang, Yongqing and "
                    "Zhang, Qisheng",
         "url": "https://huggingface.co/datasets/lihaonan0716/mcphunt-agent-traces",
-        # TODO(camera-ready): switch to @inproceedings once NeurIPS publishes the
-        # ED Track booktitle string. Keep the arXiv fields -- the preprint exists
-        # and has been cited. Do not guess the venue string; it would ship in the
-        # camera-ready.
+        # Venue string is taken from neurips_2026.sty:62 (the \@trackname the
+        # eandd option selects), not guessed. The arXiv fields stay: the preprint
+        # exists and has been cited, so dropping them would orphan those
+        # citations.
         "citation": (
-            "@article{mcphunt2026,\n"
+            "@inproceedings{mcphunt2026,\n"
             "  title = {MCPHunt: An Evaluation Framework for Cross-Boundary "
             "Data Propagation in Multi-Server MCP Agents},\n"
             "  author = {Li, Haonan and Sun, Tianjun and Wang, Yongqing and "
             "Zhang, Qisheng},\n"
+            "  booktitle = {Advances in Neural Information Processing Systems "
+            "(NeurIPS 2026), Track on Evaluations and Datasets},\n"
             "  year = {2026},\n"
             "  eprint = {2604.27819},\n"
             "  archivePrefix = {arXiv},\n"

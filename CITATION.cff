@@ -1,8 +1,8 @@
 cff-version: 1.2.0
 message: "If you use this software or dataset, please cite the paper below."
 title: "MCPHunt"
-version: 1.0.0
-date-released: 2026-04-29
+version: 1.1.0
+date-released: 2026-05-06
 license: MIT
 repository-code: "https://github.com/lihaonan0716/MCPHunt"
 authors:
@@ -16,8 +16,8 @@ authors:
   - family-names: Zhang
     given-names: Qisheng
 preferred-citation:
-  type: generic
-  status: preprint
+  type: conference-paper
+  collection-title: "Advances in Neural Information Processing Systems (NeurIPS 2026), Track on Evaluations and Datasets"
   title: "MCPHunt: An Evaluation Framework for Cross-Boundary Data Propagation in Multi-Server MCP Agents"
   authors:
     - family-names: Li

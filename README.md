@@ -191,10 +191,12 @@ Every numeric value in the paper traces back through:
 ## Citation
 
 ```bibtex
-@article{mcphunt2026,
+@inproceedings{mcphunt2026,
   title  = {MCPHunt: An Evaluation Framework for Cross-Boundary Data
             Propagation in Multi-Server MCP Agents},
   author = {Li, Haonan and Sun, Tianjun and Wang, Yongqing and Zhang, Qisheng},
+  booktitle = {Advances in Neural Information Processing Systems
+               (NeurIPS 2026), Track on Evaluations and Datasets},
   year   = {2026},
   eprint = {2604.27819},
   archivePrefix = {arXiv},
