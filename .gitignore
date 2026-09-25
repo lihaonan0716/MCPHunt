@@ -27,7 +27,8 @@ env/
 # Claude Code local settings
 .claude/settings.local.json
 
-# Orchestration state
+# Orchestration state (system retired 2026-09; kept as a guard so a stray
+# recreation by external tooling can never be committed)
 .omc/
 .omx/
 

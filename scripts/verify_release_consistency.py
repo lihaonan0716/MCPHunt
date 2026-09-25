@@ -389,7 +389,7 @@ def check_no_stale_naming(result: CheckResult) -> None:
         for path in REPO_ROOT.rglob(ext):
             rel = path.relative_to(REPO_ROOT)
             parts = rel.parts
-            if any(skip in parts for skip in ("archive", ".git", ".omc", "node_modules", ".drawio")):
+            if any(skip in parts for skip in ("archive", ".git", "node_modules", ".drawio")):
                 continue
             try:
                 text = path.read_text(encoding="utf-8", errors="ignore")
