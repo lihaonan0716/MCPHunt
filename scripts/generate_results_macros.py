@@ -34,6 +34,19 @@ B3_REPLICATION_DIR = REPO / "results" / "agent_traces_b3_replication"
 REGRESSION_DATA = REPO / "results" / "regression_data.csv"
 OUT = REPO / "paper" / "results_macros.tex"
 
+# Supplemental-evidence artifacts. These are analysis products with their own
+# provenance records (input hashes, seeds, sampling frames), so the macros READ
+# them rather than recomputing: re-deriving here would fork the statistics away
+# from the artifact that documents how they were produced.
+LIVE_GUARD_ARTIFACT = (REPO / "results" / "live_guard_replication"
+                       / "paired_live_guard_analysis.json")
+HARD_NEG_ARTIFACT = (REPO / "results" / "hard_negative_analysis"
+                     / "hard_negative_ci.json")
+MISS_PREVALENCE_ARTIFACT = (
+    REPO / "results" / "recall_evaluation"
+    / "recall_estimation_claude-opus-4-8_seed20260729_n150.json"
+)
+
 PRIMARY_SLUG = "gpt_5_4"
 
 MODEL_SLUGS = {
@@ -82,6 +95,66 @@ def load_traces(slug: str) -> List[Dict]:
     path = TRACES_DIR / slug / "agent_traces.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     return data["traces"]
+
+
+def require_artifact(path: Path, schema_key: str, expected_schema: str) -> Dict:
+    """Load a supplemental-evidence artifact, failing loudly if it is absent.
+
+    A missing artifact must never degrade into a silently-omitted macro: the
+    paper would then \\input a file whose numbers vanished without a build error,
+    which is exactly how the release checksums were once lost (see
+    artifacts/submission_archive/README.md). Absent or schema-drifted input is a
+    hard error.
+    """
+    if not path.exists():
+        raise SystemExit(
+            f"ERROR: required artifact missing: {path.relative_to(REPO)}\n"
+            f"  The paper cites numbers from this file. Regenerate it before\n"
+            f"  regenerating macros, or the manuscript loses reproducible values."
+        )
+    data = json.loads(path.read_text(encoding="utf-8"))
+    actual = data.get(schema_key)
+    if actual != expected_schema:
+        raise SystemExit(
+            f"ERROR: schema drift in {path.relative_to(REPO)}\n"
+            f"  expected {schema_key}={expected_schema!r}, found {actual!r}\n"
+            f"  Field paths below may have moved; do NOT paper over this."
+        )
+    return data
+
+
+def pct1(x: float) -> str:
+    """Format a 0-1 proportion as a 1-decimal percentage (no % sign)."""
+    return f"{x * 100:.1f}"
+
+
+def signed_pp(x: float) -> str:
+    """Format a 0-1 proportion difference as a signed percentage-point value.
+
+    Uses LaTeX math minus ($-$) rather than a hyphen so the sign typesets
+    correctly in text mode.
+    """
+    return signed_pct(x * 100)
+
+
+def signed_pct(v: float) -> str:
+    """Format an already-percentage value with a typeset LaTeX sign.
+
+    Applies to CI bounds too: a bound emitted as ``-48.8`` would typeset as a
+    hyphen, which reads as a range dash next to the other bound. Negative bounds
+    are common here (the utility interval spans zero), so every signed value
+    goes through this.
+    """
+    return f"$-${abs(v):.1f}" if v < 0 else f"$+${v:.1f}"
+
+
+def ci_bound(v: float) -> str:
+    """Format a CI bound: math minus when negative, bare digits when positive.
+
+    Unlike signed_pct this does NOT force a ``+`` -- a bracket reading
+    ``[$+$4.6, $+$13.5]`` is noise, while ``[$-$48.8, $-$10.8]`` needs the signs.
+    """
+    return f"$-${abs(v):.1f}" if v < 0 else f"{v:.1f}"
 
 
 def risky(traces: List[Dict]) -> List[Dict]:
@@ -534,6 +607,192 @@ def main() -> None:
     cmd("mitigBestUtility", f"\\mitigPrimaryMthreeUtil\\%")
     cmd("mitigPVBaseline", f"\\mitigPrimaryMzeroPV\\%")
     cmd("mitigPVBest", f"\\mitigPrimaryMthreePV\\%")
+
+    lines.append("")
+
+    # ── Collection cost (trace-derived; no local compute is used) ──
+    # The paper reports wall-clock and token totals so a reader can size a
+    # reproduction run. Host hardware is deliberately NOT reported: every model
+    # is a network API call, so the collecting machine is not a
+    # reproducibility-relevant fact.
+    lines.append("% === Collection cost (trace-derived) ===")
+
+    def _cost(dirs: List[Path]) -> Dict[str, float]:
+        dur = 0.0
+        p_tok = 0
+        c_tok = 0
+        turns = 0
+        n = 0
+        for f in dirs:
+            for t in json.loads(f.read_text(encoding="utf-8"))["traces"]:
+                n += 1
+                dur += t.get("duration_s") or 0.0
+                turns += t.get("num_turns") or 0
+                m = t.get("measurement") or {}
+                p_tok += m.get("prompt_tokens") or 0
+                c_tok += m.get("completion_tokens") or 0
+        return {"n": n, "hours": dur / 3600.0, "sec_per_trace": dur / max(n, 1),
+                "prompt": p_tok, "completion": c_tok,
+                "turns_per_trace": turns / max(n, 1)}
+
+    _main_files = [TRACES_DIR / s / "agent_traces.json" for s in MODEL_SLUGS]
+    _main_cost = _cost(_main_files)
+    _primary_cost = _cost([TRACES_DIR / PRIMARY_SLUG / "agent_traces.json"])
+    _mitig_files = [c for d in sorted(MITIG_DIR.iterdir()) if d.is_dir()
+                    for c in d.glob("agent_traces*.json")
+                    if "collection_summary" not in c.name] if MITIG_DIR.exists() else []
+    _mitig_cost = _cost(_mitig_files)
+
+    # Guard: the cost scan must cover exactly the trace sets counted above, or
+    # the reported hours/tokens would describe a different denominator.
+    assert _main_cost["n"] == total_main, (
+        f"collection-cost scan covered {_main_cost['n']} main traces, "
+        f"expected {total_main}"
+    )
+    assert _mitig_cost["n"] == total_mitig, (
+        f"collection-cost scan covered {_mitig_cost['n']} mitigation traces, "
+        f"expected {total_mitig}"
+    )
+
+    cmd("costMainHours", f"{_main_cost['hours']:.1f}")
+    cmd("costMainSecPerTrace", f"{_main_cost['sec_per_trace']:.1f}")
+    cmd("costMainPromptTokens", f"{_main_cost['prompt'] / 1e6:.1f}M")
+    cmd("costMainCompletionTokens", f"{_main_cost['completion'] / 1e6:.1f}M")
+    cmd("costMainTotalTokens",
+        f"{(_main_cost['prompt'] + _main_cost['completion']) / 1e6:.1f}M")
+    cmd("costMainTokensPerTrace",
+        f"{(_main_cost['prompt'] + _main_cost['completion'])
+           / max(_main_cost['n'], 1) / 1e3:.1f}K")
+    cmd("costMainTurnsPerTrace", f"{_main_cost['turns_per_trace']:.1f}")
+    cmd("costMitigHours", f"{_mitig_cost['hours']:.1f}")
+    # Primary-model run: prompt and total are emitted separately because the
+    # submitted text read "29.9M tokens" while the value was prompt-only.
+    cmd("costPrimaryHours", f"{_primary_cost['hours']:.1f}")
+    cmd("costPrimaryPromptTokens", f"{_primary_cost['prompt'] / 1e6:.1f}M")
+    cmd("costPrimaryTotalTokens",
+        f"{(_primary_cost['prompt'] + _primary_cost['completion']) / 1e6:.1f}M")
+
+    lines.append("")
+
+    # ══════════════════════════════════════════════════════════════════
+    # Supplemental evidence (post-submission; NOT part of the released
+    # main-benchmark trace set). Each block reads its analysis artifact
+    # rather than recomputing, so the paper's numbers and the artifact's
+    # documented provenance (seeds, input hashes, sampling frames) can
+    # never disagree.
+    # ══════════════════════════════════════════════════════════════════
+
+    # ── Live runtime taint-guard pilot ──
+    lines.append("% === Live runtime taint-guard pilot (supplemental) ===")
+    _lgp = require_artifact(LIVE_GUARD_ARTIFACT, "artifact_schema_version",
+                            "paired_live_guard_analysis/v1")
+    _lgs = _lgp["comparison"]["safety"]
+    _lgu = _lgp["comparison"]["utility"]
+    _lgd = _lgp["comparison"]["diagnostics"]
+    _lgpair = _lgs["paired"]
+    _lgmech = _lgp["provenance"]["risk_mechanisms"]
+    assert len(_lgmech) == 1, f"live-guard scope is no longer single-mechanism: {_lgmech}"
+    assert _lgpair["pairing"]["complete"], "live-guard pairing incomplete"
+
+    cmd("liveGuardModel", _lgp["provenance"]["model"].replace("deepseek-v4-flash",
+                                                              "DeepSeek-V4-Flash"))
+    cmd("liveGuardMechanism", _lgmech[0].replace("_", "\\_"))
+    cmd("liveGuardPairs", str(_lgpair["n_pairs"]))
+    cmd("liveGuardTasks", str(_lgpair["n_tasks"]))
+    cmd("liveGuardBaselineUnsafe", pct1(_lgs["baseline_actual_sink_unsafe_rate"]))
+    cmd("liveGuardDefenseUnsafe", pct1(_lgs["defense_actual_sink_unsafe_rate"]))
+    cmd("liveGuardSafetyDiff",
+        signed_pp(_lgpair["pair_weighted_diff_defense_minus_baseline"]))
+    cmd("liveGuardSafetyCILo", ci_bound(_lgpair['pair_weighted_diff_ci95'][0] * 100))
+    cmd("liveGuardSafetyCIHi", ci_bound(_lgpair['pair_weighted_diff_ci95'][1] * 100))
+    _lgmc = _lgpair["mcnemar_discordance"]
+    cmd("liveGuardDiscordantC", str(_lgmc["c_baseline_unsafe_defense_safe"]))
+    cmd("liveGuardDiscordantB", str(_lgmc["b_baseline_safe_defense_unsafe"]))
+    cmd("liveGuardBlockedWrites", str(_lgd["taint_writes_blocked_n"]))
+    cmd("liveGuardBlockedRate", pct1(_lgd["taint_blocked_rate"]))
+    cmd("liveGuardBaselineUtil", pct1(_lgu["baseline_utility_rate"]))
+    cmd("liveGuardDefenseUtil", pct1(_lgu["defense_utility_rate"]))
+    cmd("liveGuardUtilDiff", signed_pp(_lgu["diff_point"]))
+    cmd("liveGuardUtilCILo", ci_bound(_lgu['diff_ci'][0] * 100))
+    cmd("liveGuardUtilCIHi", ci_bound(_lgu['diff_ci'][1] * 100))
+    cmd("liveGuardBootstrapResamples", fmt_num(_lgpair["n_resamples"]))
+    cmd("liveGuardPromptDiffPairs", str(_lgpair["prompt_text_diff_pairs"]))
+    # Non-inferiority was NOT established; the macro exists so the paper cannot
+    # accidentally assert it while the artifact says otherwise.
+    assert _lgu["noninferior"] is False, (
+        "artifact now claims non-inferiority; the manuscript text explicitly "
+        "disclaims it -- reconcile before regenerating"
+    )
+
+    lines.append("")
+
+    # ── Matched-pair hard-negative comparison ──
+    lines.append("% === Matched-pair hard-negative comparison (supplemental) ===")
+    _hn = require_artifact(HARD_NEG_ARTIFACT, "artifact_schema_version",
+                           "hard_negative_ci/v3")
+    _hnp = _hn["pairing"]
+    _hnd = _hn["paired_difference"]
+    assert _hnp["pairing_complete"], "hard-negative pairing incomplete"
+    assert _hn["macro_cross_check"]["agrees"], (
+        "hard-negative artifact disagrees with the 2x2 macros it cross-checks"
+    )
+    cmd("hnPairN", str(_hnp["n_pairs"]))
+    cmd("hnPairRiskyOnly", str(_hnd["discordant"]["b_risky_only_unsafe"]))
+    cmd("hnPairHardNegOnly", str(_hnd["discordant"]["c_hard_negative_only_unsafe"]))
+    cmd("hnPairDiscordant", str(_hnd["discordant"]["discordant_total"]))
+    cmd("hnPairDiff", signed_pct(_hnd['point_pct']))
+    cmd("hnPairCILo", ci_bound(_hnd['ci95_pct'][0]))
+    cmd("hnPairCIHi", ci_bound(_hnd['ci95_pct'][1]))
+    cmd("hnPairMcNemarP", f"{_hnd['mcnemar_exact_two_sided_p']:.2f}")
+    cmd("hnPairRiskyCILo", f"{_hn['marginal']['risky']['wilson_ci95_pct'][0]:.1f}")
+    cmd("hnPairRiskyCIHi", f"{_hn['marginal']['risky']['wilson_ci95_pct'][1]:.1f}")
+    cmd("hnPairHardNegCILo",
+        f"{_hn['marginal']['hard_negative']['wilson_ci95_pct'][0]:.1f}")
+    cmd("hnPairHardNegCIHi",
+        f"{_hn['marginal']['hard_negative']['wilson_ci95_pct'][1]:.1f}")
+    cmd("hnPairPromptDiffPairs", str(_hnp["prompt_text_diff_pairs"]))
+
+    lines.append("")
+
+    # ── Detector-clean miss-prevalence diagnostic ──
+    # This quantifies what a VERBATIM detector does not see. It is a
+    # rubric-positive prevalence in a detector-clean pool -- not recall, not a
+    # false-negative rate, not a credential-propagation miss rate.
+    lines.append("% === Detector-clean miss-prevalence diagnostic (supplemental) ===")
+    _mp = require_artifact(MISS_PREVALENCE_ARTIFACT, "estimand",
+                           "pooled_detector_clean_miss_prevalence")
+    _mpb = _mp["detector_clean_miss_prevalence_bounds"]
+    _mpo = _mpb["optimistic"]
+    assert _mp["valid_judgments"] == _mp["samples_drawn"], (
+        "miss-prevalence sample has invalid judgments; bounds are no longer "
+        "degenerate and the paper must report a band, not a point"
+    )
+    assert _mp["evidence_truncation_chars"] == 0, (
+        "miss-prevalence run had evidence truncation; the diagnostic is not clean"
+    )
+    cmd("missPrevPool", str(_mp["eligible_candidates"]))
+    cmd("missPrevExcludedControls", str(_mp["excluded_control_candidates"]))
+    cmd("missPrevSampleN", str(_mp["samples_drawn"]))
+    cmd("missPrevFlagged", str(_mp["observed_misses_k"]))
+    cmd("missPrevPct", pct1(_mpb["complete_case_point"]))
+    cmd("missPrevCILo", f"{_mpo['detector_clean_miss_prevalence_ci95'][0] * 100:.1f}")
+    cmd("missPrevCIHi", f"{_mpo['detector_clean_miss_prevalence_ci95'][1] * 100:.1f}")
+    cmd("missPrevHypergeomCILo",
+        f"{_mpo['detector_clean_miss_prevalence_hypergeom95'][0] * 100:.1f}")
+    cmd("missPrevHypergeomCIHi",
+        f"{_mpo['detector_clean_miss_prevalence_hypergeom95'][1] * 100:.1f}")
+    _lt = _mp["leak_type_breakdown"]
+    cmd("missPrevVerbatim", str(_lt["verbatim"]))
+    cmd("missPrevPartial", str(_lt["partial"]))
+    cmd("missPrevSemantic", str(_lt["semantic"]))
+    cmd("missPrevFrameHash", _mp["sampling_frame_hash"][:12],
+        "first 12 hex of the sampling-frame hash (full value in the artifact)")
+    # The headline "no full-canary reproduction" claim is only true while the
+    # verbatim count is zero.
+    assert _lt["verbatim"] == 0, (
+        "a verbatim leak now appears in the detector-clean sample; the "
+        "'no full-canary reproduction' claim must be retracted"
+    )
 
     lines.append("")
     lines.append(f"% Generated from {total_main} main + {total_mitig} mitigation traces")
