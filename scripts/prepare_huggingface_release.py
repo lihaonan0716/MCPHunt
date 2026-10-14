@@ -102,6 +102,11 @@ PAIRED_META = [
     "results/hard_negative_analysis/hard_negative_ci.json",
 ]
 
+# Raw CRS-audit labels and protocol. Mirrored from the code release so the
+# HF bundle declares (and hashes) the audit files it already publishes; the
+# kappa quoted in the metadata recomputes from exactly these bytes.
+CRS_AUDIT_FILES = ["README.md", "annotation_1.csv", "annotation_2.csv"]
+
 # Judge-based recall diagnostic. Released as its own split (not under meta/)
 # because it is a single-record estimate over a seeded sample rather than an
 # aggregate of the trace splits, and AC-2 quotes its headline externally.
@@ -207,6 +212,11 @@ supplemental strata.
   non-verbatim undercount of the conservative, verbatim-only substring detector
   and is diagnostic only — it does not modify any per-trace label in the other
   splits.
+- **`crs_audit/`** — raw labels (`annotation_1.csv`, `annotation_2.csv`) and
+  protocol (`README.md`) of the post-submission blind CRS audit by two
+  non-author annotators. The same files are in the code repository under
+  `artifacts/release/crs_audit/`; `scripts/score_annotation.py` recomputes the
+  reported agreement and Cohen's kappa from them.
 
 ## Reproduction
 
@@ -354,7 +364,7 @@ def _stage_variant(variant: str, config: dict) -> Path:
         shutil.rmtree(staging)
     for sub in ("main", "mitigation", "live_guard_defense",
                 "browser_replication", "meta",
-                RECALL_EVALUATION["dst_subdir"]):
+                RECALL_EVALUATION["dst_subdir"], "crs_audit"):
         (staging / sub).mkdir(parents=True)
 
     # Main traces
@@ -421,6 +431,13 @@ def _stage_variant(variant: str, config: dict) -> Path:
     shutil.copy2(rc_src, staging / RECALL_EVALUATION["dst_subdir"]
                  / RECALL_EVALUATION["dst_name"])
     print(f"  {RECALL_EVALUATION['dst_name']}")
+
+    # CRS-audit raw labels (required: the metadata's kappa recomputes from them)
+    print("\n==> Staging CRS-audit files...")
+    for name in CRS_AUDIT_FILES:
+        src = _require(RELEASE_DIR / "crs_audit" / name, "CRS-audit file")
+        shutil.copy2(src, staging / "crs_audit" / name)
+        print(f"  crs_audit/{name}")
 
     # Finalize payload FIRST. Metadata hashes these exact bytes, including the
     # dataset card; only croissant.json itself is excluded to avoid self-hashing.

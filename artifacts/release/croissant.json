@@ -31,7 +31,7 @@
     "jsonPath": "cr:jsonPath",
     "key": "cr:key",
     "md5": "cr:md5",
-    "sha256": "cr:sha256",
+    "sha256": "sc:sha256",
     "parentField": "cr:parentField",
     "path": "cr:path",
     "recordSet": "cr:recordSet",
@@ -296,7 +296,31 @@
       "name": "README.md",
       "contentUrl": "README.md",
       "encodingFormat": "text/markdown",
-      "sha256": "a562e4005bc56fe5d9308990724e8a689ba40f829553120af4d3fa75ea7d900c"
+      "sha256": "b1d7b8a9e17d2101186393acda96bf2aa47971f153185fd58d30667ae34a9b11"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/crs_audit/README.md",
+      "name": "crs_audit/README.md",
+      "contentUrl": "crs_audit/README.md",
+      "encodingFormat": "text/markdown",
+      "sha256": "1f8c5120a653e5de5503e2de4fc1ab9775696031850290f62f801abbeef5039b"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/crs_audit/annotation_1.csv",
+      "name": "crs_audit/annotation_1.csv",
+      "contentUrl": "crs_audit/annotation_1.csv",
+      "encodingFormat": "text/csv",
+      "sha256": "284f2fc5999fee845db1d00d7301e71d5add0ca5840561014a9fce88abd046cd"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/crs_audit/annotation_2.csv",
+      "name": "crs_audit/annotation_2.csv",
+      "contentUrl": "crs_audit/annotation_2.csv",
+      "encodingFormat": "text/csv",
+      "sha256": "5c044d611e8e06320b6fd1f26bc4089b039500bbe131ddf7a52959ca87e59b30"
     }
   ],
   "recordSet": [
@@ -576,9 +600,9 @@
   "rai:dataCollectionType": "Synthetic",
   "rai:dataCollectionRawData": "Raw traces are the primary data. Environment configurations and canary values are defined in src/mcphunt/environments.py and src/mcphunt/canary_registry.py.",
   "rai:dataCollectionTimeframe": "2026-Q2 to 2026-Q3",
-  "rai:dataAnnotationProtocol": "Risk labels are computed deterministically by the canary-based labeling pipeline (src/mcphunt/labeling.py). The pipeline evaluates 11 tiered binary risk signals plus one diagnostic signal per trace using per-canary causal tracking with temporal ordering. CRS stratification labels are frozen task metadata assigned during task construction using a fixed rubric and encoded as completion_requires_secret in src/mcphunt/taxonomy.py, frozen before experiments. The CRS labels were not crowdsourced. A post-submission independent audit of the CRS labels was subsequently performed by two annotators who are not authors, each labeling all 147 tasks blind to trace outcomes; the raw labels are released under artifacts/release/crs_audit/ so the reliability statistic is reproducible.",
+  "rai:dataAnnotationProtocol": "Risk labels are computed deterministically by the canary-based labeling pipeline (src/mcphunt/labeling.py). The pipeline evaluates 11 tiered binary risk signals plus one diagnostic signal per trace using per-canary causal tracking with temporal ordering. CRS stratification labels are frozen task metadata assigned during task construction using a fixed rubric and encoded as completion_requires_secret in src/mcphunt/taxonomy.py, frozen before experiments. The CRS labels were not crowdsourced. A post-submission independent audit of the CRS labels was subsequently performed by two annotators who are not authors, each labeling all 147 tasks blind to trace outcomes; the raw labels are released under crs_audit/ in this bundle (mirrored at artifacts/release/crs_audit/ in the code repository) so the reliability statistic is reproducible.",
   "rai:dataAnnotationPlatform": "Automated pipeline (labeling.py)",
-  "rai:dataAnnotationAnalysis": "The labeling pipeline is deterministic and reproducible. Mutation testing (test_labeling_integrity.py) validates that injected canaries are detected and safe traces produce no false positives. For the CRS stratification, a post-submission independent human audit (two non-author annotators, blind to outcomes) yielded inter-annotator agreement of 138/147 = 93.9% and Cohen's kappa = 0.71 (percentile bootstrap 95% CI [0.50, 0.87], 10000 resamples). This statistic reflects a post-submission audit, not a pre-submission or pre-registered study; the raw labels (artifacts/release/crs_audit/) and the scoring script (scripts/score_annotation.py) make it fully reproducible, and tests/test_crs_audit_reproducibility.py pins the reported values.",
+  "rai:dataAnnotationAnalysis": "The labeling pipeline is deterministic and reproducible. Mutation testing (test_labeling_integrity.py) validates that injected canaries are detected and safe traces produce no false positives. For the CRS stratification, a post-submission independent human audit (two non-author annotators, blind to outcomes) yielded inter-annotator agreement of 138/147 = 93.9% and Cohen's kappa = 0.71 (percentile bootstrap 95% CI [0.50, 0.87], 10000 resamples). This statistic reflects a post-submission audit, not a pre-submission or pre-registered study; the raw labels (crs_audit/ in this bundle; artifacts/release/crs_audit/ in the code repository) and the scoring script (scripts/score_annotation.py) make it fully reproducible, and tests/test_crs_audit_reproducibility.py pins the reported values.",
   "rai:dataPreprocessingProtocol": [
     "Traces are sanitized to remove local usernames and paths (sanitize_traces.py).",
     "Risk signals are recomputed offline to ensure label consistency (relabel_traces.py).",

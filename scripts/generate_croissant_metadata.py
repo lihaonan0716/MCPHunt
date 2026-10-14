@@ -132,7 +132,7 @@ def _croissant_context() -> Dict[str, Any]:
         "jsonPath": "cr:jsonPath",
         "key": "cr:key",
         "md5": "cr:md5",
-        "sha256": "cr:sha256",
+        "sha256": "sc:sha256",
         "parentField": "cr:parentField",
         "path": "cr:path",
         "recordSet": "cr:recordSet",
@@ -169,7 +169,7 @@ def build_metadata(identity: Dict[str, str]) -> Dict[str, Any]:
         "audit of the CRS labels was subsequently performed by two annotators "
         "who are not authors, each labeling all "
         f"{crs['n']} tasks blind to trace outcomes; the raw labels are "
-        "released under artifacts/release/crs_audit/ so the reliability "
+        "released under crs_audit/ in this bundle (mirrored at artifacts/release/crs_audit/ in the code repository) so the reliability "
         "statistic is reproducible."
     )
     crs_analysis = (
@@ -180,7 +180,7 @@ def build_metadata(identity: Dict[str, str]) -> Dict[str, Any]:
         f"[{crs['ci_lo']:.2f}, {crs['ci_hi']:.2f}], {crs['resamples']} "
         "resamples). This statistic reflects a post-submission audit, not a "
         "pre-submission or pre-registered study; the raw labels "
-        "(artifacts/release/crs_audit/) and the scoring script "
+        "(crs_audit/ in this bundle; artifacts/release/crs_audit/ in the code repository) and the scoring script "
         "(scripts/score_annotation.py) make it fully reproducible, and "
         "tests/test_crs_audit_reproducibility.py pins the reported values."
     )
@@ -271,13 +271,15 @@ def build_metadata(identity: Dict[str, str]) -> Dict[str, Any]:
     from download_traces import MITIGATION_DIRS
     required_payload = ([f"mitigation/{name}.json" for name in MITIGATION_DIRS]
                         + ["meta/mitigation_results.json",
-                           "meta/guarded_run_provenance.json", "README.md"])
+                           "meta/guarded_run_provenance.json", "README.md"]
+                        + [f"crs_audit/{n}" for n in
+                           ("README.md", "annotation_1.csv", "annotation_2.csv")])
     for name in required_payload:
         distribution.append({
             "@type": "cr:FileObject", "@id": f"payload/{name}",
             "name": name, "contentUrl": name,
-            "encodingFormat": "text/markdown" if name.endswith(".md")
-                              else "application/json",
+            "encodingFormat": {".md": "text/markdown", ".csv": "text/csv"}.get(
+                Path(name).suffix, "application/json"),
         })
 
     trace_fields = [

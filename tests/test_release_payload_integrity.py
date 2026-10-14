@@ -24,7 +24,8 @@ def payload(tmp_path):
                         else "Prepared for publication", encoding="utf-8")
     meta = {"description": "template", "distribution": [
         {"@id": "main_a", "@type": "cr:FileObject",
-         "contentUrl": "main/a.json", "name": "main/a.json"}]}
+         "contentUrl": "main/a.json", "name": "main/a.json",
+         "encodingFormat": "application/json"}]}
     return tmp_path, cro.finalize_metadata(meta, tmp_path)
 
 
@@ -88,3 +89,29 @@ def test_required_file_missing_aborts_generation(tmp_path):
     meta = {"description": "", "distribution": [{"contentUrl": "main/missing.json"}]}
     with pytest.raises(ValueError, match="required release files missing"):
         cro.finalize_metadata(meta, tmp_path)
+
+
+def _expand_term(context, term):
+    value = context[term]
+    iri = value["@id"] if isinstance(value, dict) else value
+    prefix, _, local = iri.partition(":")
+    return context[prefix] + local if prefix in context else iri
+
+
+def test_checksum_terms_expand_to_croissant_spec_iris():
+    # mlcroissant reads sha256 as schema.org/sha256 and md5 as cr:md5 (Croissant 1.x);
+    # a wrong namespace silently drops every checksum during JSON-LD expansion.
+    context = cro._croissant_context()
+    assert _expand_term(context, "sha256") == "https://schema.org/sha256"
+    assert _expand_term(context, "md5") == "http://mlcommons.org/croissant/md5"
+
+
+def test_mlcroissant_accepts_finalized_metadata(payload):
+    mlc = pytest.importorskip("mlcroissant")
+    root, meta = payload
+    meta = {**meta, "@context": cro._croissant_context(), "@type": "sc:Dataset",
+            "name": "payload_test", "url": "https://example.org/payload",
+            "conformsTo": "http://mlcommons.org/croissant/1.0"}
+    path = root / "croissant.json"
+    path.write_text(json.dumps(meta), encoding="utf-8")
+    mlc.Dataset(jsonld=path)
