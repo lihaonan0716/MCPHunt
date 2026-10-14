@@ -12,6 +12,7 @@ for all table cells, inline numbers, and cross-model ranges.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import sys
@@ -46,6 +47,12 @@ MISS_PREVALENCE_ARTIFACT = (
     REPO / "results" / "recall_evaluation"
     / "recall_estimation_claude-opus-4-8_seed20260729_n150.json"
 )
+# Historical single-model guarded collection run. DISTINCT from the same-day
+# live pilot above: different arms, different denominators, weaker control.
+# Macro names are deliberately prefixed `guardedRun*` (never `liveGuard*`) so a
+# reader of the .tex cannot conflate the two bodies of evidence.
+GUARDED_RUN_ARTIFACT = (REPO / "results" / "live_guard_replication"
+                        / "guarded_run_provenance.json")
 
 PRIMARY_SLUG = "gpt_5_4"
 
@@ -97,6 +104,18 @@ def load_traces(slug: str) -> List[Dict]:
     return data["traces"]
 
 
+def _rel(path: Path) -> str:
+    """Repo-relative POSIX path, falling back to the absolute path.
+
+    ``relative_to`` raises for anything outside the repo, which would replace a
+    clear "artifact missing" message with an unrelated ValueError.
+    """
+    try:
+        return str(path.relative_to(REPO)).replace("\\", "/")
+    except ValueError:
+        return str(path).replace("\\", "/")
+
+
 def require_artifact(path: Path, schema_key: str, expected_schema: str) -> Dict:
     """Load a supplemental-evidence artifact, failing loudly if it is absent.
 
@@ -108,7 +127,7 @@ def require_artifact(path: Path, schema_key: str, expected_schema: str) -> Dict:
     """
     if not path.exists():
         raise SystemExit(
-            f"ERROR: required artifact missing: {path.relative_to(REPO)}\n"
+            f"ERROR: required artifact missing: {_rel(path)}\n"
             f"  The paper cites numbers from this file. Regenerate it before\n"
             f"  regenerating macros, or the manuscript loses reproducible values."
         )
@@ -116,11 +135,41 @@ def require_artifact(path: Path, schema_key: str, expected_schema: str) -> Dict:
     actual = data.get(schema_key)
     if actual != expected_schema:
         raise SystemExit(
-            f"ERROR: schema drift in {path.relative_to(REPO)}\n"
+            f"ERROR: schema drift in {_rel(path)}\n"
             f"  expected {schema_key}={expected_schema!r}, found {actual!r}\n"
             f"  Field paths below may have moved; do NOT paper over this."
         )
     return data
+
+
+def require_recorded_inputs(artifact: Dict, path: Path) -> None:
+    """Re-hash an artifact's declared inputs and fail on drift.
+
+    An artifact records the SHA-256 of the files it was computed from. Those
+    hashes are only worth recording if something re-checks them: otherwise a
+    relabel can silently change the traces while the artifact -- and every macro
+    read from it -- keeps reporting statistics computed from the old bytes.
+    """
+    for arm, meta in artifact.get("inputs", {}).items():
+        src = REPO / meta["path"]
+        if not src.exists():
+            raise SystemExit(
+                f"ERROR: {_rel(path)} declares input {meta['path']}\n"
+                f"  which no longer exists. Regenerate the artifact."
+            )
+        h = hashlib.sha256()
+        with src.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        if h.hexdigest() != meta["sha256"]:
+            raise SystemExit(
+                f"ERROR: input drift for {_rel(path)} [{arm}]\n"
+                f"  {meta['path']}\n"
+                f"  recorded {meta['sha256']}\n"
+                f"  on disk  {h.hexdigest()}\n"
+                f"  The artifact's statistics were computed from different bytes\n"
+                f"  than the traces now on disk. Regenerate it before the macros."
+            )
 
 
 def pct1(x: float) -> str:
@@ -723,6 +772,104 @@ def main() -> None:
         "artifact now claims non-inferiority; the manuscript text explicitly "
         "disclaims it -- reconcile before regenerating"
     )
+
+    lines.append("")
+
+    # ── Historical single-model guarded collection run ──
+    #
+    # The submitted manuscript described this evidence as a post-hoc SIMULATION
+    # replayed over the 3,615-trace main benchmark, and reported cross-model
+    # blocking rates and utility preservation from it. None of that is what the
+    # data is. It is a real collection run with the guard active at tool
+    # dispatch, on ONE model, against a baseline collected three months earlier
+    # under a different pipeline commit and largely different task prompts.
+    #
+    # These macros therefore carry a `guardedRun` prefix, never `liveGuard`:
+    # the same-day 39-pair pilot above is the better-controlled evidence and
+    # must stay textually distinguishable from this weaker historical set.
+    lines.append("% === Historical single-model guarded run (supplemental) ===")
+    lines.append("% NOT a simulation and NOT cross-model: see evidence_scope in")
+    lines.append("% results/live_guard_replication/guarded_run_provenance.json")
+    _gr = require_artifact(GUARDED_RUN_ARTIFACT, "artifact_schema_version",
+                           "guarded_run_provenance/v1")
+    require_recorded_inputs(_gr, GUARDED_RUN_ARTIFACT)
+
+    # The claim boundary is machine-checked, not left to the prose. If a future
+    # artifact ever asserts a causal, cross-model, or utility conclusion, macro
+    # generation stops rather than letting the manuscript quietly inherit it.
+    _grs = _gr["evidence_scope"]
+    assert _grs["causal"] is False, (
+        "guarded-run artifact now claims a causal effect; the manuscript "
+        "describes it as an observed difference under confounds -- reconcile"
+    )
+    assert _grs["cross_model"] is False, (
+        "guarded-run artifact now claims cross-model scope; the arm is "
+        "single-model -- this is the exact error being corrected"
+    )
+    assert _grs["supports_utility_claim"] is False, (
+        "guarded-run artifact now claims utility evidence; a fixed guarded "
+        "arm cannot support one -- reconcile before regenerating"
+    )
+    assert _gr["arm_identity"]["defense_field"] == "taint_tracking"
+    assert _gr["arm_identity"]["baseline_field"] == "none"
+    assert _gr["confounds"]["differing_pipeline_commit"]["differs"] is True, (
+        "guarded-run arms now report the same pipeline commit; the confound "
+        "disclosure in the manuscript would be wrong"
+    )
+
+    _grp = _gr["paired_actual_sink"]
+    _grr = _grp["risk_mechanisms_only"]
+    _gra = _grr["all_risk_mechanisms"]
+
+    cmd("guardedRunModel",
+        _gr["arm_identity"]["model"].replace("deepseek-v4-flash",
+                                             "DeepSeek-V4-Flash"))
+    cmd("guardedRunPairs", str(_grp["n_pairs"]),
+        "task x env cells, NOT independent tasks")
+    cmd("guardedRunTasks", str(_grp["n_tasks"]))
+    cmd("guardedRunRiskPairs", str(_gr["denominator"]["risk_pairs"]))
+    cmd("guardedRunBenignPairs", str(_gr["denominator"]["benign_control_pairs"]))
+    cmd("guardedRunBaselineUnsafe",
+        pct1(_gra["baseline_actual_sink_unsafe_rate"]),
+        "delivered-argument propagation, risk mechanisms only")
+    cmd("guardedRunDefenseResidual",
+        pct1(_gra["defense_residual_unsafe_rate"]))
+    cmd("guardedRunDiff",
+        signed_pp(_grp["pair_weighted_diff_defense_minus_baseline"]),
+        "OBSERVED difference under confounds; not a guard effect estimate")
+    cmd("guardedRunCILo", ci_bound(_grp["pair_weighted_diff_ci95"][0] * 100))
+    cmd("guardedRunCIHi", ci_bound(_grp["pair_weighted_diff_ci95"][1] * 100))
+    _grmc = _grp["mcnemar_discordance"]
+    cmd("guardedRunDiscordantC", str(_grmc["c_baseline_unsafe_defense_safe"]))
+    cmd("guardedRunDiscordantB", str(_grmc["b_baseline_safe_defense_unsafe"]))
+    cmd("guardedRunBlockedEvents",
+        str(_gr["guard_activity"]["taint_blocked_events"]))
+    cmd("guardedRunBootstrapResamples", fmt_num(_grp["n_resamples"]))
+
+    # Residual concentration: the single substantive per-mechanism fact.
+    _grb = _grr["browser_to_local"]
+    _gro = _grr["other_risk_mechanisms"]
+    assert _gro["defense_residual_unsafe_n"] == 0, (
+        "residual is no longer confined to browser_to_local; the manuscript's "
+        "concentration claim must be rewritten"
+    )
+    cmd("guardedRunBrowserResidual", pct1(_grb["defense_residual_unsafe_rate"]))
+    cmd("guardedRunBrowserResidualN", str(_grb["defense_residual_unsafe_n"]))
+    cmd("guardedRunOtherMechResidual", pct1(_gro["defense_residual_unsafe_rate"]))
+    cmd("guardedRunOtherMechCount",
+        str(len([m for m in _grp["per_mechanism"]
+                 if m not in ("benign_control", "browser_to_local")])))
+
+    # Confounds, as macros, so the disclosure cannot drift from the data.
+    _grc = _gr["confounds"]
+    cmd("guardedRunPromptDiffPairs",
+        str(_grc["prompt_text_not_controlled"]["prompt_text_diff_pairs"]))
+    cmd("guardedRunBaselineCommit",
+        f"\\texttt{{{_grc['differing_pipeline_commit']['baseline']}}}")
+    cmd("guardedRunDefenseCommit",
+        f"\\texttt{{{_grc['differing_pipeline_commit']['defense']}}}")
+    cmd("guardedRunBaselineDate", _grc["non_contemporaneous_arms"]["baseline"][0])
+    cmd("guardedRunDefenseDate", _grc["non_contemporaneous_arms"]["defense"][0])
 
     lines.append("")
 
