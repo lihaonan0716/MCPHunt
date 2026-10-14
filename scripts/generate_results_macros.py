@@ -662,10 +662,10 @@ def main() -> None:
     cmd("numMitigModels", str(mitig_model_count))
     cmd("totalTracesMitigation", fmt_num(total_mitig))
     cmd("totalTracesAll", fmt_num(total_main + total_mitig))
-    cmd("totalTracesReleased", fmt_num(total_main + total_mitig),
-        "canonical alias for released trace total (main + mitigation)")
+    cmd("totalTracesMainPlusMitigation", fmt_num(total_main + total_mitig),
+        "main + prompt mitigation; excludes supplemental arms")
 
-    # ── Extension traces (executed but not in the HF release bundle at v1) ──
+    # ── Supplemental arms included in the planned camera-ready payload ──
     # Counted directly from the raw trace files so the rebuttal / paper can
     # cite the executed-experiments completeness figure without hand-typing.
     live_guard_defense_path = (
@@ -690,7 +690,11 @@ def main() -> None:
 
     cmd("totalTracesExecuted",
         fmt_num(total_main + total_mitig + total_live_guard_defense + total_b3),
-        "all executed traces (released + live-guard defense + B3)")
+        "main + mitigation + supplemental arms")
+    cmd("totalTracesSupplemental", fmt_num(total_live_guard_defense + total_b3))
+    cmd("totalTracesPublished",
+        fmt_num(total_main + total_mitig + total_live_guard_defense + total_b3),
+        "planned publication total; remote availability is not yet verified")
 
     # Convenience aliases for primary model mitigation (used most in paper)
     cmd("mitigBaseline", f"\\mitigPrimaryMzeroProp\\%")

@@ -317,15 +317,14 @@ def _check_declared_files_present(result: CheckResult, staging: Path,
     except Exception as exc:  # noqa: BLE001 - report, don't crash the suite
         result.error(f"{label} croissant not parseable: {exc}")
         return
-    missing = [obj.get("contentUrl") for obj in meta.get("distribution", [])
-               if obj.get("contentUrl")
-               and not (staging / obj["contentUrl"]).exists()]
-    if missing:
-        result.error(f"{label} croissant declares {len(missing)} file(s) that "
-                     f"are not in the bundle: {missing[:5]}")
+    from generate_croissant_metadata import validate_payload
+    try:
+        validate_payload(meta, staging)
+    except (ValueError, KeyError, TypeError, OSError) as exc:
+        result.error(f"{label} payload integrity: {exc}")
     else:
-        n = len(meta.get("distribution", []))
-        result.passed(f"{label} ships every one of {n} declared file(s)")
+        result.passed(f"{label} all {len(meta['distribution'])} payload files "
+                      "declared in both directions with matching SHA256")
 
 
 def _staging_sync_keys(rel: dict, stg: dict) -> list:
@@ -358,7 +357,8 @@ def _check_staging_matches_release(result: CheckResult, staging: Path,
              and rel.get(key) != stg.get(key)]
     # The staged copy is a plain copy of its identity's generated file, so the
     # whole document -- distribution and recordSet included -- must agree.
-    for key in ("distribution", "recordSet", "citeAs", "url",
+    for key in ("distribution", "recordSet", "citeAs", "url", "creativeWorkStatus",
+                "additionalProperty",
                 "creator", "publisher"):
         if rel.get(key) != stg.get(key) and key not in drift:
             drift.append(key)
@@ -366,8 +366,8 @@ def _check_staging_matches_release(result: CheckResult, staging: Path,
         result.error(
             f"{label} croissant drifted from "
             f"artifacts/release/{config['croissant']} on {sorted(drift)}; "
-            "re-run scripts/generate_croissant_metadata.py then "
-            "scripts/prepare_huggingface_release.py"
+            "re-run scripts/prepare_huggingface_release.py "
+            "(payload -> metadata -> verification)"
         )
     else:
         result.passed(

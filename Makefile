@@ -47,14 +47,14 @@ reproduce:
 paired:
 	$(PYTHON) scripts/compute_hard_negative_ci.py
 	$(PYTHON) scripts/analyze_paired_live_guard.py
+	$(PYTHON) scripts/verify_guarded_run_provenance.py
 
 ## Strip collection-environment PII (local usernames, absolute paths, host IDs)
 sanitize:
 	$(PYTHON) scripts/sanitize_traces.py --apply
 
-## Rebuild both HuggingFace staging bundles (sanitize -> recompute -> stage)
+## Rebuild release (sanitize -> recompute -> payload -> metadata -> verify)
 release:
-	$(PYTHON) scripts/generate_croissant_metadata.py
 	$(PYTHON) scripts/prepare_huggingface_release.py
 
 ## Full local pipeline: relabel + reproduce

@@ -19,6 +19,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import generate_croissant_metadata as croissant
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RESULTS_DIR = REPO_ROOT / "results"
 RELEASE_DIR = REPO_ROOT / "artifacts" / "release"
@@ -90,6 +92,7 @@ BROWSER_REPLICATION = [
 # externally, so a missing file must abort the build rather than produce a bundle
 # whose README promises something the bundle does not contain.
 PAIRED_META = [
+    "results/live_guard_replication/guarded_run_provenance.json",
     "results/live_guard_replication/paired_live_guard_analysis.json",
     "results/mitigation_analysis/live_guard_deepseek_v4_flash_paired.json",
     # Hard-negative matched-pair table. Staged because the reviewer-facing
@@ -116,6 +119,13 @@ RECALL_EVALUATION = {
 # hash no released file has -- making "recomputes from the released traces"
 # unverifiable. Checked after staging; see _verify_source_hashes.
 SOURCE_HASH_CHECKS = [
+    {"artifact": "results/live_guard_replication/guarded_run_provenance.json",
+     "hash_key": "inputs.baseline.sha256", "staged": "main/deepseek_v4_flash.json"},
+    {"artifact": "results/live_guard_replication/guarded_run_provenance.json",
+     "hash_key": "inputs.defense.sha256", "staged": "live_guard_defense/deepseek_v4_flash.json"},
+    {"artifact": "results/live_guard_replication/guarded_run_provenance.json",
+     "hash_key": "confounds.prompt_text_not_controlled.cross_checked_against.sha256",
+     "staged": "meta/live_guard_deepseek_v4_flash_paired.json"},
     {
         "artifact": "results/hard_negative_analysis/hard_negative_ci.json",
         "hash_key": "source_sha256",
@@ -163,6 +173,9 @@ tags:
 
 Agent execution traces from the MCPHunt evaluation framework, measuring
 cross-boundary data propagation in multi-server MCP agents.
+This camera-ready bundle is prepared for publication; remote availability has
+not yet been verified. Planned total: 6,786 traces in main, mitigation, and
+supplemental strata.
 
 ## Contents
 
@@ -181,6 +194,7 @@ cross-boundary data propagation in multi-server MCP agents.
 - **`meta/`** — Aggregated results, regression data, and paired-analysis
   summaries for statistical analysis. Includes
   `paired_live_guard_analysis.json`,
+  `guarded_run_provenance.json`,
   `live_guard_deepseek_v4_flash_paired.json`, and
   `hard_negative_ci.json` (the risky-vs-hard-negative matched 2x2, its Tango
   score interval, and the exact McNemar p-value).
@@ -332,6 +346,11 @@ def _stage_variant(variant: str, config: dict) -> Path:
           f"{staging.relative_to(REPO_ROOT)}\n{'=' * 60}")
 
     if staging.exists():
+        # Never recursively remove a computed directory outside the staging root.
+        resolved = staging.resolve()
+        if (resolved.parent != config["dir"].resolve()
+                or not resolved.is_relative_to(REPO_ROOT.resolve())):
+            raise SystemExit(f"unsafe staging rebuild target: {resolved}")
         shutil.rmtree(staging)
     for sub in ("main", "mitigation", "live_guard_defense",
                 "browser_replication", "meta",
@@ -354,9 +373,9 @@ def _stage_variant(variant: str, config: dict) -> Path:
         for subdir in sorted(mitig_dir.iterdir()):
             if not subdir.is_dir():
                 continue
-            jsons = list(subdir.glob("*.json"))
-            if not jsons:
-                continue
+            jsons = sorted(subdir.glob("agent_traces*.json"))
+            if len(jsons) != 1:
+                raise SystemExit(f"expected exactly one mitigation trace file: {subdir}")
             dst = staging / "mitigation" / f"{subdir.name}.json"
             shutil.copy2(jsons[0], dst)
             print(f"  {subdir.name}: {dst.stat().st_size / (1024 * 1024):.1f} MB")
@@ -403,15 +422,21 @@ def _stage_variant(variant: str, config: dict) -> Path:
                  / RECALL_EVALUATION["dst_name"])
     print(f"  {RECALL_EVALUATION['dst_name']}")
 
-    # Croissant metadata + dataset card
-    croissant_src = _require(RELEASE_DIR / config["croissant"],
-                             f"Croissant metadata for '{variant}'")
-    shutil.copy2(croissant_src, staging / "croissant.json")
+    # Finalize payload FIRST. Metadata hashes these exact bytes, including the
+    # dataset card; only croissant.json itself is excluded to avoid self-hashing.
     (staging / "README.md").write_text(_dataset_card(config),
                                        encoding="utf-8")
 
     _verify_source_hashes(staging)
     _assert_no_excluded_files(staging)
+
+    metadata = croissant.finalize_metadata(
+        croissant.build_metadata(croissant.RELEASE_IDENTITIES[variant]), staging)
+    rendered = json.dumps(metadata, indent=2, ensure_ascii=False) + "\n"
+    RELEASE_DIR.mkdir(parents=True, exist_ok=True)
+    (RELEASE_DIR / config["croissant"]).write_text(rendered, encoding="utf-8")
+    (staging / "croissant.json").write_text(rendered, encoding="utf-8")
+    croissant.validate_payload(metadata, staging)
 
     total_files = sum(1 for p in staging.rglob("*") if p.is_file())
     total_size = sum(p.stat().st_size for p in staging.rglob("*") if p.is_file())
@@ -444,7 +469,8 @@ def main(skip_sanitize: bool = False,
         #    source hash no released file carries.
         print("==> Recomputing matched-pair analyses from sanitized traces...")
         for script in ("compute_hard_negative_ci.py",
-                       "analyze_paired_live_guard.py"):
+                       "analyze_paired_live_guard.py",
+                       "verify_guarded_run_provenance.py"):
             _run([sys.executable, str(REPO_ROOT / "scripts" / script)],
                  f"Recompute {script}")
         print()

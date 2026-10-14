@@ -31,6 +31,7 @@
     "jsonPath": "cr:jsonPath",
     "key": "cr:key",
     "md5": "cr:md5",
+    "sha256": "cr:sha256",
     "parentField": "cr:parentField",
     "path": "cr:path",
     "recordSet": "cr:recordSet",
@@ -58,7 +59,7 @@
   },
   "datePublished": "2026-05-06",
   "name": "MCPHunt Agent Traces",
-  "description": "Agent execution traces measuring cross-boundary data propagation in multi-server MCP agents. Contains 3,615 main-benchmark traces from 5 models across 147 tasks and 9 mechanism families, plus 2,706 mitigation-study traces. A DeepSeek-V4-Flash runtime taint-guard defense arm ships 387 additional paired traces (live_guard_defense/) and a browser-mechanism cross-arm replication ships 78 additional traces (browser_replication/: 39 baseline + 39 defense) for a total of 6,786 released traces. Each trace includes the full tool-call event log, 11 tiered binary risk signals plus one diagnostic signal computed by canary-based taint tracking, CRS stratification labels, and outcome classification.",
+  "description": "Agent execution traces measuring cross-boundary data propagation in multi-server MCP agents. Prepared for publication: 3,615 main-benchmark traces across 147 tasks and 9 mechanism families, 2,706 prompt-mitigation traces, and 465 supplemental traces in separate directories (387 historical single-model guarded traces in live_guard_defense/; 78 same-day baseline/defense browser traces in browser_replication/). Planned total: 6,786 traces. Each trace includes tool-call events, canary-based risk labels, CRS stratification, and outcome classification.",
   "keywords": [
     "MCP",
     "Model Context Protocol",
@@ -78,91 +79,224 @@
       "@id": "main_gpt_5_4",
       "name": "main/gpt_5_4.json",
       "contentUrl": "main/gpt_5_4.json",
-      "encodingFormat": "application/json"
+      "encodingFormat": "application/json",
+      "sha256": "9d7f1878c54d2eb325170b18087a649b616eb594e47fb344657d4dd04749736e"
     },
     {
       "@type": "cr:FileObject",
       "@id": "main_gpt_5_2",
       "name": "main/gpt_5_2.json",
       "contentUrl": "main/gpt_5_2.json",
-      "encodingFormat": "application/json"
+      "encodingFormat": "application/json",
+      "sha256": "600a061c13f3b357f5fbe51d4e6c57424a74dd2b43e68d6b5bbf76f634c53fbc"
     },
     {
       "@type": "cr:FileObject",
       "@id": "main_deepseek_v4_flash",
       "name": "main/deepseek_v4_flash.json",
       "contentUrl": "main/deepseek_v4_flash.json",
-      "encodingFormat": "application/json"
+      "encodingFormat": "application/json",
+      "sha256": "3379923a5f675eef4be9e486360f0068c678736d86fdd039c19123402681a025"
     },
     {
       "@type": "cr:FileObject",
       "@id": "main_gemini_3_1_pro_preview",
       "name": "main/gemini_3_1_pro_preview.json",
       "contentUrl": "main/gemini_3_1_pro_preview.json",
-      "encodingFormat": "application/json"
+      "encodingFormat": "application/json",
+      "sha256": "f4422118dfe0e0d2d56f5d83f8dae28fa77d3c229a06eb0c67aab171d6c77462"
     },
     {
       "@type": "cr:FileObject",
       "@id": "main_MiniMax_M2_7",
       "name": "main/MiniMax_M2_7.json",
       "contentUrl": "main/MiniMax_M2_7.json",
-      "encodingFormat": "application/json"
+      "encodingFormat": "application/json",
+      "sha256": "66462168e7f273385d9371ea99807ef9f0bca9b76752f6da3af47e424aee621f"
     },
     {
       "@type": "cr:FileObject",
       "@id": "live_guard_defense_deepseek_v4_flash",
       "name": "live_guard_defense/deepseek_v4_flash.json",
       "contentUrl": "live_guard_defense/deepseek_v4_flash.json",
-      "encodingFormat": "application/json"
+      "encodingFormat": "application/json",
+      "sha256": "c5b5c4152560863815ec48da841a7e3758ff27b410ca70df655f1d2d95e204ba"
     },
     {
       "@type": "cr:FileObject",
       "@id": "browser_replication_deepseek_baseline",
       "name": "browser_replication/deepseek_v4_flash_baseline.json",
       "contentUrl": "browser_replication/deepseek_v4_flash_baseline.json",
-      "encodingFormat": "application/json"
+      "encodingFormat": "application/json",
+      "sha256": "cc89e8c85398d4dba8a9b3f7a8301ee498888c44c7ecb9831dfb6bbf0794fe60"
     },
     {
       "@type": "cr:FileObject",
       "@id": "browser_replication_deepseek_defense",
       "name": "browser_replication/deepseek_v4_flash_defense.json",
       "contentUrl": "browser_replication/deepseek_v4_flash_defense.json",
-      "encodingFormat": "application/json"
+      "encodingFormat": "application/json",
+      "sha256": "5ac236c1be62f7b6cdfee22e2370b529110973ba0d45dced6d6adc9d16da1b8a"
     },
     {
       "@type": "cr:FileObject",
       "@id": "meta_regression",
       "name": "meta/regression_data.csv",
       "contentUrl": "meta/regression_data.csv",
-      "encodingFormat": "text/csv"
+      "encodingFormat": "text/csv",
+      "sha256": "6098d24db945b8bd689e95b79c474931c573c04ec695801f5df4266482c8ae66"
     },
     {
       "@type": "cr:FileObject",
       "@id": "meta_paired_live_guard_analysis",
       "name": "meta/paired_live_guard_analysis.json",
       "contentUrl": "meta/paired_live_guard_analysis.json",
-      "encodingFormat": "application/json"
+      "encodingFormat": "application/json",
+      "sha256": "1ce92995bacd23e80dc5d32f1fd99c2ba94df687d9729834edd7322ef4a66798"
     },
     {
       "@type": "cr:FileObject",
       "@id": "meta_live_guard_deepseek_v4_flash_paired",
       "name": "meta/live_guard_deepseek_v4_flash_paired.json",
       "contentUrl": "meta/live_guard_deepseek_v4_flash_paired.json",
-      "encodingFormat": "application/json"
+      "encodingFormat": "application/json",
+      "sha256": "11d0d047ae238c76847f0140726e1f1f9998316ff77edad39437102db4f0c4c6"
     },
     {
       "@type": "cr:FileObject",
       "@id": "meta_hard_negative_ci",
       "name": "meta/hard_negative_ci.json",
       "contentUrl": "meta/hard_negative_ci.json",
-      "encodingFormat": "application/json"
+      "encodingFormat": "application/json",
+      "sha256": "a69c14342c64536faff0342ab5ae0ef19c0e3d9d50c6d87c36e5ac8482fd8b2f"
     },
     {
       "@type": "cr:FileObject",
       "@id": "recall_evaluation_estimation",
       "name": "recall_evaluation/recall_estimation.json",
       "contentUrl": "recall_evaluation/recall_estimation.json",
-      "encodingFormat": "application/json"
+      "encodingFormat": "application/json",
+      "sha256": "28dba4acab9d272d670fcc160b794b3e92cdcc7390cb50f2f17cfef7ef7ca253"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/mitigation/gpt54_m0.json",
+      "name": "mitigation/gpt54_m0.json",
+      "contentUrl": "mitigation/gpt54_m0.json",
+      "encodingFormat": "application/json",
+      "sha256": "da7749b772711cd9614462af288f4d2d5f1643d24c219e2ec09a89d594e86e52"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/mitigation/gpt54_m1.json",
+      "name": "mitigation/gpt54_m1.json",
+      "contentUrl": "mitigation/gpt54_m1.json",
+      "encodingFormat": "application/json",
+      "sha256": "032ab6eaa7cd60429ad3644b6dbf4b26647e7fceff20aa83ae51e14840e004c0"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/mitigation/gpt54_m2.json",
+      "name": "mitigation/gpt54_m2.json",
+      "contentUrl": "mitigation/gpt54_m2.json",
+      "encodingFormat": "application/json",
+      "sha256": "cb33caec80f5c69006bb4b43e6ddcf419dbada83768381f93471e4e86d78bf84"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/mitigation/gpt54_m3.json",
+      "name": "mitigation/gpt54_m3.json",
+      "contentUrl": "mitigation/gpt54_m3.json",
+      "encodingFormat": "application/json",
+      "sha256": "a08ec48b58e8eecfbd84e87f8dce42c4389ea9234dafb8972aee8a33fda6a6c3"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/mitigation/deepseek_m0_rv1.json",
+      "name": "mitigation/deepseek_m0_rv1.json",
+      "contentUrl": "mitigation/deepseek_m0_rv1.json",
+      "encodingFormat": "application/json",
+      "sha256": "4f0b00f5bfbccc3024d2f6f61961f52a0656c2713b433fcdf34301b790127027"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/mitigation/deepseek_m1_rv1.json",
+      "name": "mitigation/deepseek_m1_rv1.json",
+      "contentUrl": "mitigation/deepseek_m1_rv1.json",
+      "encodingFormat": "application/json",
+      "sha256": "bbc8ea0eacad017d2e6811ee25c07decbc2018d19225d1e62dd84d7c5710ad02"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/mitigation/deepseek_m2_rv1.json",
+      "name": "mitigation/deepseek_m2_rv1.json",
+      "contentUrl": "mitigation/deepseek_m2_rv1.json",
+      "encodingFormat": "application/json",
+      "sha256": "dfaa932f0330e308b78ab860d35eb72f7dad3e1b7ac63bda8a8d8b98f2abc568"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/mitigation/deepseek_m3_rv1.json",
+      "name": "mitigation/deepseek_m3_rv1.json",
+      "contentUrl": "mitigation/deepseek_m3_rv1.json",
+      "encodingFormat": "application/json",
+      "sha256": "18d4a68e23b32c4e6821e7be7d1b3bd59a45876bda51c71a9585afe95bce1dc7"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/mitigation/minimax_m0_rv1.json",
+      "name": "mitigation/minimax_m0_rv1.json",
+      "contentUrl": "mitigation/minimax_m0_rv1.json",
+      "encodingFormat": "application/json",
+      "sha256": "f5cb3d9aa07da4d308ccc5c5b1a55b8962abb8340102fa66557910367145fae6"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/mitigation/minimax_m1_rv1.json",
+      "name": "mitigation/minimax_m1_rv1.json",
+      "contentUrl": "mitigation/minimax_m1_rv1.json",
+      "encodingFormat": "application/json",
+      "sha256": "dec46f7c7c783db14a229cd2bb61a48526f4d8173666b59e388bf9f17fc08711"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/mitigation/minimax_m2_rv1.json",
+      "name": "mitigation/minimax_m2_rv1.json",
+      "contentUrl": "mitigation/minimax_m2_rv1.json",
+      "encodingFormat": "application/json",
+      "sha256": "5884fe654e0fb5cef887f16a7b10740cdf2e2f5127e35c65c24c0a23ad55205d"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/mitigation/minimax_m3_rv1.json",
+      "name": "mitigation/minimax_m3_rv1.json",
+      "contentUrl": "mitigation/minimax_m3_rv1.json",
+      "encodingFormat": "application/json",
+      "sha256": "d052f0ded97f612635594f3cdf7a0a74782da3e456db52bf68077a4e36cbe125"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/meta/mitigation_results.json",
+      "name": "meta/mitigation_results.json",
+      "contentUrl": "meta/mitigation_results.json",
+      "encodingFormat": "application/json",
+      "sha256": "5a52e2fdadbf25ac68208842ba454891181dd902038feaeea955096442a38128"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/meta/guarded_run_provenance.json",
+      "name": "meta/guarded_run_provenance.json",
+      "contentUrl": "meta/guarded_run_provenance.json",
+      "encodingFormat": "application/json",
+      "sha256": "b2c90e28b9e6454ca7c5374d585454f2127e0aaa3c1b4f259dd2b64bdfcd207d"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "payload/README.md",
+      "name": "README.md",
+      "contentUrl": "README.md",
+      "encodingFormat": "text/markdown",
+      "sha256": "a562e4005bc56fe5d9308990724e8a689ba40f829553120af4d3fa75ea7d900c"
     }
   ],
   "recordSet": [
@@ -441,7 +575,7 @@
   "rai:dataCollection": "All traces are collected by running LLM agents (via OpenAI-compatible APIs) against 8 MCP servers in controlled sandbox environments. Workspaces contain synthetic canary credentials; no real user data or production systems are involved. Each trace records the full sequence of tool calls, their arguments and results, and post-hoc canary-based risk labels.",
   "rai:dataCollectionType": "Synthetic",
   "rai:dataCollectionRawData": "Raw traces are the primary data. Environment configurations and canary values are defined in src/mcphunt/environments.py and src/mcphunt/canary_registry.py.",
-  "rai:dataCollectionTimeframe": "2026-Q1 to 2026-Q2",
+  "rai:dataCollectionTimeframe": "2026-Q2 to 2026-Q3",
   "rai:dataAnnotationProtocol": "Risk labels are computed deterministically by the canary-based labeling pipeline (src/mcphunt/labeling.py). The pipeline evaluates 11 tiered binary risk signals plus one diagnostic signal per trace using per-canary causal tracking with temporal ordering. CRS stratification labels are frozen task metadata assigned during task construction using a fixed rubric and encoded as completion_requires_secret in src/mcphunt/taxonomy.py, frozen before experiments. The CRS labels were not crowdsourced. A post-submission independent audit of the CRS labels was subsequently performed by two annotators who are not authors, each labeling all 147 tasks blind to trace outcomes; the raw labels are released under artifacts/release/crs_audit/ so the reliability statistic is reproducible.",
   "rai:dataAnnotationPlatform": "Automated pipeline (labeling.py)",
   "rai:dataAnnotationAnalysis": "The labeling pipeline is deterministic and reproducible. Mutation testing (test_labeling_integrity.py) validates that injected canaries are detected and safe traces produce no false positives. For the CRS stratification, a post-submission independent human audit (two non-author annotators, blind to outcomes) yielded inter-annotator agreement of 138/147 = 93.9% and Cohen's kappa = 0.71 (percentile bootstrap 95% CI [0.50, 0.87], 10000 resamples). This statistic reflects a post-submission audit, not a pre-submission or pre-registered study; the raw labels (artifacts/release/crs_audit/) and the scoring script (scripts/score_annotation.py) make it fully reproducible, and tests/test_crs_audit_reproducibility.py pins the reported values.",
@@ -451,7 +585,7 @@
     "Trace structure and critical fields are validated post-sanitization."
   ],
   "rai:dataReleaseMaintenancePlan": "The dataset is versioned. The maintainers commit to hosting and maintaining the dataset for at least 24 months after publication.",
-  "rai:dataLimitation": "All 147 tasks are researcher-designed and synthetic. The 8 MCP servers represent common patterns but not the full ecosystem. Detection captures exact and near-exact canary matches but misses paraphrased propagation. Cloud-hosted model endpoints may be updated or deprecated by providers after publication.",
+  "rai:dataLimitation": "All 147 tasks are researcher-designed and synthetic. The 8 MCP servers represent common patterns but not the full ecosystem. Main-benchmark detection captures verbatim canary matches but misses paraphrased propagation. Cloud-hosted model endpoints may be updated or deprecated by providers after publication.",
   "rai:dataSocialImpact": "Intended for research on agent safety evaluation. The framework identifies high-risk source-to-sink topologies, which could in principle guide adversaries. This is mitigated by using only synthetic canary credentials and releasing exclusively for defensive pre-deployment evaluation.",
   "rai:dataBiases": "Task design reflects the authors' conception of compositional data-flow risks. Mechanism families may over-represent patterns the authors prioritized. Hard-negative and benign controls are included to mitigate one-sided coverage.",
   "rai:personalSensitiveInformation": "None. All credentials in traces are synthetic canary values (e.g., sk_live_*, AKIA*, ghp_*). Traces are sanitized to remove local usernames and filesystem paths before release.",
@@ -461,5 +595,28 @@
     "Benchmarking canary-based taint tracking for agent safety",
     "Studying pathway-specific propagation patterns across mechanism families",
     "Educational material for tool-use agent safety"
+  ],
+  "creativeWorkStatus": "Prepared for publication; remote availability unverified",
+  "additionalProperty": [
+    {
+      "@type": "sc:PropertyValue",
+      "name": "main_trace_count",
+      "value": 3615
+    },
+    {
+      "@type": "sc:PropertyValue",
+      "name": "mitigation_trace_count",
+      "value": 2706
+    },
+    {
+      "@type": "sc:PropertyValue",
+      "name": "live_guard_defense_trace_count",
+      "value": 387
+    },
+    {
+      "@type": "sc:PropertyValue",
+      "name": "browser_replication_trace_count",
+      "value": 78
+    }
   ]
 }

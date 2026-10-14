@@ -80,6 +80,8 @@ class DownloadRestoreContractTest(unittest.TestCase):
         self.assertEqual(
             set(DL.PAIRED_META_FILES),
             {
+                ("meta/guarded_run_provenance.json",
+                 "live_guard_replication/guarded_run_provenance.json"),
                 ("meta/paired_live_guard_analysis.json",
                  "live_guard_replication/paired_live_guard_analysis.json"),
                 ("meta/live_guard_deepseek_v4_flash_paired.json",
@@ -136,6 +138,14 @@ class ReleaseBundleContractTest(unittest.TestCase):
         self.assertIn("meta/paired_live_guard_analysis.json", distribution)
         self.assertIn("meta/live_guard_deepseek_v4_flash_paired.json", distribution)
 
+    def test_croissant_requires_complete_camera_ready_payload(self) -> None:
+        meta = CRO.build_metadata(CRO.RELEASE_IDENTITIES["named"])
+        names = {obj["contentUrl"] for obj in meta["distribution"]}
+        self.assertTrue({f"mitigation/{name}.json" for name in DL.MITIGATION_DIRS} <= names)
+        self.assertIn("meta/guarded_run_provenance.json", names)
+        self.assertIn("meta/mitigation_results.json", names)
+        self.assertIn("README.md", names)
+
     def test_dataset_card_documents_recompute_then_stage_flow(self) -> None:
         card = PREP.DATASET_CARD
         self.assertIn("writing to `results/hard_negative_analysis/`", card)
@@ -146,6 +156,7 @@ class ReleaseBundleContractTest(unittest.TestCase):
         self.assertEqual(
             set(PREP.PAIRED_META),
             {
+                "results/live_guard_replication/guarded_run_provenance.json",
                 "results/live_guard_replication/paired_live_guard_analysis.json",
                 "results/mitigation_analysis/live_guard_deepseek_v4_flash_paired.json",
                 "results/hard_negative_analysis/hard_negative_ci.json",

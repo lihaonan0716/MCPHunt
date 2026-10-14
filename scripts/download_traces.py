@@ -64,6 +64,8 @@ SUPPLEMENTAL_FILES = [
 # reviewer can diff a locally recomputed artifact against the published one;
 # `make paired` overwrites them from the traces.
 PAIRED_META_FILES = [
+    ("meta/guarded_run_provenance.json",
+     "live_guard_replication/guarded_run_provenance.json"),
     ("meta/paired_live_guard_analysis.json",
      "live_guard_replication/paired_live_guard_analysis.json"),
     ("meta/live_guard_deepseek_v4_flash_paired.json",

@@ -5,9 +5,9 @@ Generate Croissant metadata for the MCPHunt agent traces dataset.
 NeurIPS 2026 Evaluations & Datasets Track requires Croissant format with
 core and Responsible AI (RAI) fields.
 
-Outputs (one per release identity; content is otherwise identical):
-  - artifacts/release/croissant.json       (named authors)
-  - artifacts/release/croissant.anon.json  (anonymous review copy)
+Output: artifacts/release/croissant.json (named authors).
+The anonymous review identity is retired. Metadata is generated only after
+the release payload is assembled; use prepare_huggingface_release.py for a rebuild.
 
 Croissant spec: https://docs.mlcommons.org/croissant/docs/croissant-spec.html
 
@@ -17,6 +17,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -24,6 +25,7 @@ from typing import Any, Dict, List
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT_DIR = REPO_ROOT / "artifacts" / "release"
+DEFAULT_PAYLOAD_DIR = REPO_ROOT / "artifacts" / "huggingface-staging" / "mcphunt-agent-traces"
 DATASET_VERSION = "1.1.0"
 PUBLICATION_DATE = "2026-05-06"
 
@@ -130,6 +132,7 @@ def _croissant_context() -> Dict[str, Any]:
         "jsonPath": "cr:jsonPath",
         "key": "cr:key",
         "md5": "cr:md5",
+        "sha256": "cr:sha256",
         "parentField": "cr:parentField",
         "path": "cr:path",
         "recordSet": "cr:recordSet",
@@ -262,6 +265,21 @@ def build_metadata(identity: Dict[str, str]) -> Dict[str, Any]:
         "encodingFormat": "application/json",
     })
 
+    # Required publication inputs, using the same mitigation inventory that
+    # downloads restore. A partially populated stratum must not become a smaller
+    # apparently complete release just because the missing file was not listed.
+    from download_traces import MITIGATION_DIRS
+    required_payload = ([f"mitigation/{name}.json" for name in MITIGATION_DIRS]
+                        + ["meta/mitigation_results.json",
+                           "meta/guarded_run_provenance.json", "README.md"])
+    for name in required_payload:
+        distribution.append({
+            "@type": "cr:FileObject", "@id": f"payload/{name}",
+            "name": name, "contentUrl": name,
+            "encodingFormat": "text/markdown" if name.endswith(".md")
+                              else "application/json",
+        })
+
     trace_fields = [
         _field("trace_id", "Unique trace identifier.", "sc:Text", "$.traces[*].trace_id", "main_gpt_5_4"),
         _field("task_id", "Task identifier from the 147-task registry.", "sc:Text", "$.traces[*].task_id", "main_gpt_5_4"),
@@ -311,7 +329,7 @@ def build_metadata(identity: Dict[str, str]) -> Dict[str, Any]:
             "(live_guard_defense/) and a browser-mechanism cross-arm "
             "replication ships 78 additional traces "
             "(browser_replication/: 39 baseline + 39 defense) for a total of "
-            "6,786 released traces. Each trace includes the full tool-call "
+            "6,786 traces planned for publication. Each trace includes the full tool-call "
             "event log, 11 tiered binary risk signals plus one diagnostic "
             "signal computed by canary-based taint tracking, CRS "
             "stratification labels, and outcome classification."
@@ -367,7 +385,7 @@ def build_metadata(identity: Dict[str, str]) -> Dict[str, Any]:
             "canary values are defined in src/mcphunt/environments.py and "
             "src/mcphunt/canary_registry.py."
         ),
-        "rai:dataCollectionTimeframe": "2026-Q1 to 2026-Q2",
+        "rai:dataCollectionTimeframe": "2026-Q2 to 2026-Q3",
         "rai:dataAnnotationProtocol": (
             "Risk labels are computed deterministically by the canary-based "
             "labeling pipeline (src/mcphunt/labeling.py). The pipeline evaluates "
@@ -398,7 +416,7 @@ def build_metadata(identity: Dict[str, str]) -> Dict[str, Any]:
         "rai:dataLimitation": (
             "All 147 tasks are researcher-designed and synthetic. The 8 MCP "
             "servers represent common patterns but not the full ecosystem. "
-            "Detection captures exact and near-exact canary matches but "
+            "Main-benchmark detection captures verbatim canary matches but "
             "misses paraphrased propagation. Cloud-hosted model endpoints "
             "may be updated or deprecated by providers after publication."
         ),
@@ -431,17 +449,121 @@ def build_metadata(identity: Dict[str, str]) -> Dict[str, Any]:
     return meta
 
 
-def main(out_dir: Path) -> List[Path]:
+def payload_files(payload_dir: Path) -> Dict[str, Path]:
+    """All shipped bytes except the metadata itself (no self-hash cycle)."""
+    if not payload_dir.is_dir():
+        raise ValueError(f"release payload missing: {payload_dir}; assemble it first")
+    files = {}
+    for path in sorted(payload_dir.rglob("*")):
+        if path.is_symlink():
+            raise ValueError(f"symlinks are not release payload: {path}")
+        if path.is_file() and path != payload_dir / "croissant.json":
+            if path.name.endswith(".presan.bak"):
+                raise ValueError(f"pre-sanitization backup in payload: {path}")
+            files[path.relative_to(payload_dir).as_posix()] = path
+    if not files:
+        raise ValueError("release payload is empty")
+    return files
+
+
+def file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def finalize_metadata(meta: Dict[str, Any], payload_dir: Path) -> Dict[str, Any]:
+    """Declare and hash the finalized payload, preserving existing reference IDs."""
+    files = payload_files(payload_dir)
+    declared = {obj["contentUrl"] for obj in meta["distribution"]}
+    missing = declared - files.keys()
+    if missing:
+        raise ValueError(f"required release files missing: {sorted(missing)}")
+    for name in sorted(files.keys() - declared):
+        meta["distribution"].append({
+            "@type": "cr:FileObject", "@id": f"payload/{name}",
+            "name": name, "contentUrl": name,
+            "encodingFormat": {".json": "application/json", ".csv": "text/csv",
+                               ".md": "text/markdown"}.get(Path(name).suffix,
+                                                           "application/octet-stream"),
+        })
+    for obj in meta["distribution"]:
+        obj["sha256"] = file_sha256(files[obj["contentUrl"]])
+    counts = payload_trace_counts(payload_dir)
+    meta["description"] = (
+        "Agent execution traces measuring cross-boundary data propagation in "
+        "multi-server MCP agents. Prepared for publication: "
+        f"{counts['main']:,} main-benchmark traces across 147 tasks and 9 "
+        f"mechanism families, {counts['mitigation']:,} prompt-mitigation traces, "
+        f"and {counts['live_guard_defense'] + counts['browser_replication']:,} "
+        "supplemental traces in separate directories "
+        f"({counts['live_guard_defense']:,} historical single-model guarded "
+        "traces in live_guard_defense/; "
+        f"{counts['browser_replication']:,} same-day baseline/defense browser "
+        f"traces in browser_replication/). Planned total: {sum(counts.values()):,} "
+        "traces. Each trace includes tool-call events, canary-based risk labels, "
+        "CRS stratification, and outcome classification."
+    )
+    meta["creativeWorkStatus"] = "Prepared for publication; remote availability unverified"
+    meta["additionalProperty"] = [
+        {"@type": "sc:PropertyValue", "name": f"{name}_trace_count", "value": n}
+        for name, n in counts.items()
+    ]
+    validate_payload(meta, payload_dir)
+    return meta
+
+
+def payload_trace_counts(payload_dir: Path) -> Dict[str, int]:
+    counts = {}
+    for name in ("main", "mitigation", "live_guard_defense", "browser_replication"):
+        paths = sorted((payload_dir / name).glob("*.json"))
+        if not paths:
+            raise ValueError(f"trace stratum missing or empty: {name}")
+        counts[name] = 0
+        for path in paths:
+            traces = json.loads(path.read_text(encoding="utf-8"))["traces"]
+            if not isinstance(traces, list) or not traces:
+                raise ValueError(f"empty or invalid trace array: {path}")
+            counts[name] += len(traces)
+    return counts
+
+
+def validate_payload(meta: Dict[str, Any], payload_dir: Path) -> None:
+    """Fail on missing/extra files, duplicate declarations, unsafe paths or drift."""
+    files = payload_files(payload_dir)
+    entries = meta.get("distribution")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("distribution must be a nonempty list")
+    declared = set()
+    ids = set()
+    for obj in entries:
+        name = obj.get("contentUrl")
+        if not isinstance(name, str) or name not in files:
+            raise ValueError(f"declared file missing or outside payload: {name!r}")
+        if name in declared or obj.get("@id") in ids:
+            raise ValueError(f"duplicate distribution entry: {name}")
+        declared.add(name)
+        ids.add(obj.get("@id"))
+        if obj.get("sha256") != file_sha256(files[name]):
+            raise ValueError(f"missing or mismatched sha256: {name}")
+    extra = files.keys() - declared
+    if extra:
+        raise ValueError(f"undeclared payload files: {sorted(extra)}")
+
+
+def main(out_dir: Path, payload_dir: Path = DEFAULT_PAYLOAD_DIR) -> List[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     written = []
     for variant, identity in RELEASE_IDENTITIES.items():
-        metadata = build_metadata(identity)
+        metadata = finalize_metadata(build_metadata(identity), payload_dir)
         out_path = out_dir / identity["filename"]
-        out_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False),
+        out_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
                             encoding="utf-8")
         print(f"Wrote Croissant metadata ({variant}): "
-              f"{out_path.relative_to(REPO_ROOT)}")
+              f"{out_path}")
         written.append(out_path)
 
     # Clean up old split Croissant files if they exist
@@ -457,5 +579,7 @@ def main(out_dir: Path) -> List[Path]:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
+    parser.add_argument("--payload-dir", type=Path, default=DEFAULT_PAYLOAD_DIR,
+                        help="finalized payload to declare and hash")
     args = parser.parse_args()
-    main(args.out_dir)
+    main(args.out_dir, args.payload_dir)
