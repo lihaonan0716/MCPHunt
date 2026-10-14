@@ -87,6 +87,14 @@ STRUCTURAL_LITERALS = {
     "10000": "bootstrap resample count (a chosen parameter)",
     "100": "the literal 100 in 'sub-100\\% rates' / percentage arithmetic",
     "57": "prose reference to a CRS rate also shown in a generated table row",
+    # RETRACTED figures, quoted verbatim in the Appendix S correction notice.
+    # These are deliberately hand-typed: they are not results this paper
+    # reports but a record of what an earlier version claimed, and a
+    # correction is only checkable if the retracted numbers appear in it. No
+    # generator can emit them -- that is precisely why they were retracted.
+    # They must never be reintroduced as live claims.
+    "85": "retracted blocking-band lower bound, quoted in the correction",
+    "96": "retracted blocking-band upper bound, quoted in the correction",
 }
 
 # The NeurIPS checklist template ships boilerplate guideline text containing
@@ -169,8 +177,13 @@ def _tex_lines(name: str):
 # this mechanism exists to prevent. Route the number through a generator, or add
 # it to STRUCTURAL_LITERALS with a reason.
 HAND_TYPED_BASELINE = {
-    "paper.tex": 35,
-    "appendix.tex": 352,
+    # Lowered 35 -> 33 when the retracted cross-model guard figures left the
+    # body (see Appendix S). The ratchet only moves down.
+    "paper.tex": 33,
+    # 352 -> 351: the Appendix S correction adds two quoted retracted figures
+    # (now allowlisted) while one previously-counted literal is covered by the
+    # same entries. Net one fewer unexplained literal.
+    "appendix.tex": 351,
     # All 3 are on one line (checklist.tex:115): the hardware/wall-clock/turns
     # claim, removed or macroized in the camera-ready pass.
     "checklist.tex": 3,

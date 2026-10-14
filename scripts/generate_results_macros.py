@@ -811,6 +811,19 @@ def main() -> None:
     cmd("liveGuardUtilCIHi", ci_bound(_lgu['diff_ci'][1] * 100))
     cmd("liveGuardBootstrapResamples", fmt_num(_lgpair["n_resamples"]))
     cmd("liveGuardPromptDiffPairs", str(_lgpair["prompt_text_diff_pairs"]))
+    # Same-day and prompt-matched, but NOT same code: the artifact's own
+    # confound note says the honest scope is "never same pipeline commit".
+    # Without these the body would disclose less than the artifact records.
+    _lgcommit = _lgp["provenance"]["confounds_remaining"]["pipeline_commit_asymmetry"]
+    assert (_lgcommit["baseline_pipeline_git_commit"]
+            != _lgcommit["defense_pipeline_git_commit"]), (
+        "live-guard arms now report one commit; the manuscript discloses an "
+        "asymmetry that would no longer exist -- reconcile"
+    )
+    cmd("liveGuardBaselineCommit",
+        f"\\texttt{{{_lgcommit['baseline_pipeline_git_commit']}}}")
+    cmd("liveGuardDefenseCommit",
+        f"\\texttt{{{_lgcommit['defense_pipeline_git_commit']}}}")
     # Non-inferiority was NOT established; the macro exists so the paper cannot
     # accidentally assert it while the artifact says otherwise.
     assert _lgu["noninferior"] is False, (
