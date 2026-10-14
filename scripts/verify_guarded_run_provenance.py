@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from mcphunt.taxonomy import TASK_REGISTRY  # noqa: E402
+from mcphunt.actual_sink import trace_actual_sink_unsafe  # noqa: E402
 from evaluate_mitigation import (  # noqa: E402
     PairingIntegrityError,
     paired_actual_sink_analysis,
@@ -365,6 +366,35 @@ def check_prompt_mismatch(baseline: List[Dict], defense: List[Dict]) -> Dict[str
                      "not a guard-caused effect.")}
 
 
+def _all_pairs_aggregate(baseline: List[Dict], defense: List[Dict]) -> Dict[str, Any]:
+    """Unsafe rates over ALL 387 cells -- the population the diff/CI use.
+
+    ``paired_actual_sink_analysis`` reports its point estimate and interval over
+    every matched cell, benign controls included, while
+    ``risk_mechanisms_only`` reports rates over the 351 risk cells. Those are
+    different denominators: 44.2% -> 5.1% on the risk subset implies about
+    -39.3 pp, not the -35.4 pp the all-cell estimand gives.
+
+    Emitting only the risk-subset rates next to the all-cell difference would
+    let one sentence mix two populations. So the all-cell rates are computed
+    here and published alongside, and the macro names say which is which.
+    """
+    n = len(defense)
+    b_unsafe = sum(trace_actual_sink_unsafe(t) for t in baseline)
+    d_unsafe = sum(trace_actual_sink_unsafe(t) for t in defense)
+    return {
+        "n_pairs": n,
+        "includes_benign_controls": True,
+        "baseline_actual_sink_unsafe_n": b_unsafe,
+        "baseline_actual_sink_unsafe_rate": round(b_unsafe / n, 4),
+        "defense_residual_unsafe_n": d_unsafe,
+        "defense_residual_unsafe_rate": round(d_unsafe / n, 4),
+        "note": ("Denominator for pair_weighted_diff_defense_minus_baseline "
+                 "and its CI. Benign-control cells are included here and "
+                 "excluded from risk_mechanisms_only."),
+    }
+
+
 # ---------------------------------------------------------------------------
 
 def build(baseline_bundle: Dict, defense_bundle: Dict) -> Dict[str, Any]:
@@ -383,6 +413,8 @@ def build(baseline_bundle: Dict, defense_bundle: Dict) -> Dict[str, Any]:
         paired = paired_actual_sink_analysis(baseline_matched, defense)
     except PairingIntegrityError as exc:
         _fail(f"paired analysis rejected the arms: {exc}")
+
+    all_pairs = _all_pairs_aggregate(baseline_matched, defense)
 
     b_versions = _versions(baseline_bundle)
     d_versions = _versions(defense_bundle)
@@ -416,6 +448,7 @@ def build(baseline_bundle: Dict, defense_bundle: Dict) -> Dict[str, Any]:
         "denominator": denominator,
         "guard_activity": blocked,
         "paired_actual_sink": paired,
+        "all_pairs_aggregate": all_pairs,
         "metric_scope": (
             "actual_sink measures canary values present in the arguments a sink "
             "tool RECEIVES. It does not inspect final persisted file or "

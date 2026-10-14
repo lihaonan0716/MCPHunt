@@ -142,34 +142,79 @@ def require_artifact(path: Path, schema_key: str, expected_schema: str) -> Dict:
     return data
 
 
-def require_recorded_inputs(artifact: Dict, path: Path) -> None:
-    """Re-hash an artifact's declared inputs and fail on drift.
+def _verify_hash(label: str, declared_path: str, declared_sha: str,
+                 artifact_path: Path) -> None:
+    src = REPO / declared_path
+    if not src.exists():
+        raise SystemExit(
+            f"ERROR: {_rel(artifact_path)} declares input {declared_path}\n"
+            f"  which no longer exists. Regenerate the artifact."
+        )
+    h = hashlib.sha256()
+    with src.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    if h.hexdigest() != declared_sha:
+        raise SystemExit(
+            f"ERROR: input drift for {_rel(artifact_path)} [{label}]\n"
+            f"  {declared_path}\n"
+            f"  recorded {declared_sha}\n"
+            f"  on disk  {h.hexdigest()}\n"
+            f"  The artifact's statistics were computed from different bytes\n"
+            f"  than the files now on disk. Regenerate it before the macros."
+        )
+
+
+def require_recorded_inputs(artifact: Dict, path: Path,
+                            required_arms: tuple = ("baseline", "defense")) -> None:
+    """Re-hash every file an artifact declares, and fail on drift.
 
     An artifact records the SHA-256 of the files it was computed from. Those
     hashes are only worth recording if something re-checks them: otherwise a
     relabel can silently change the traces while the artifact -- and every macro
     read from it -- keeps reporting statistics computed from the old bytes.
+
+    ``inputs`` is REQUIRED, and so is each named arm. Treating an absent
+    ``inputs`` block as "nothing to check" would let a malformed artifact pass
+    the strictest gate in this script by omitting the very section that gate
+    reads -- a silent skip is indistinguishable from a silent pass.
+
+    Any ``cross_checked_against`` block is verified too: a file whose value the
+    artifact compared itself against is as load-bearing as the traces, so
+    "recorded a hash" must mean "re-verified at generation time".
     """
-    for arm, meta in artifact.get("inputs", {}).items():
-        src = REPO / meta["path"]
-        if not src.exists():
-            raise SystemExit(
-                f"ERROR: {_rel(path)} declares input {meta['path']}\n"
-                f"  which no longer exists. Regenerate the artifact."
-            )
-        h = hashlib.sha256()
-        with src.open("rb") as fh:
-            for chunk in iter(lambda: fh.read(1 << 20), b""):
-                h.update(chunk)
-        if h.hexdigest() != meta["sha256"]:
-            raise SystemExit(
-                f"ERROR: input drift for {_rel(path)} [{arm}]\n"
-                f"  {meta['path']}\n"
-                f"  recorded {meta['sha256']}\n"
-                f"  on disk  {h.hexdigest()}\n"
-                f"  The artifact's statistics were computed from different bytes\n"
-                f"  than the traces now on disk. Regenerate it before the macros."
-            )
+    inputs = artifact.get("inputs")
+    if not isinstance(inputs, dict) or not inputs:
+        raise SystemExit(
+            f"ERROR: {_rel(path)} has no 'inputs' block.\n"
+            f"  Input hashes cannot be re-verified, so the macros below would\n"
+            f"  report statistics of unknown provenance. Regenerate it."
+        )
+    missing = [arm for arm in required_arms if arm not in inputs]
+    if missing:
+        raise SystemExit(
+            f"ERROR: {_rel(path)} is missing required input arm(s) {missing}.\n"
+            f"  Every arm the comparison rests on must be hash-verified."
+        )
+    for arm, meta in inputs.items():
+        _verify_hash(arm, meta["path"], meta["sha256"], path)
+
+    for label, block in _cross_checked_blocks(artifact):
+        _verify_hash(label, block["path"], block["sha256"], path)
+
+
+def _cross_checked_blocks(node, trail: str = ""):
+    """Yield (label, block) for every cross_checked_against record."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "cross_checked_against" and isinstance(value, dict) \
+                    and "sha256" in value and "path" in value:
+                yield (f"cross-check{trail}", value)
+            else:
+                yield from _cross_checked_blocks(value, f"{trail}.{key}")
+    elif isinstance(node, list):
+        for i, value in enumerate(node):
+            yield from _cross_checked_blocks(value, f"{trail}[{i}]")
 
 
 def pct1(x: float) -> str:
@@ -824,21 +869,40 @@ def main() -> None:
     cmd("guardedRunModel",
         _gr["arm_identity"]["model"].replace("deepseek-v4-flash",
                                              "DeepSeek-V4-Flash"))
-    cmd("guardedRunPairs", str(_grp["n_pairs"]),
-        "task x env cells, NOT independent tasks")
+    # Two populations, never interchangeable. The paired estimand and its CI
+    # are computed over ALL 387 cells (benign controls included); the
+    # risk-mechanism rates exclude the 36 benign cells. Mixing them inside one
+    # sentence yields a rate pair that does not imply the stated difference:
+    # the risk subset moves 44.2 -> 5.1 (about -39.3 pp), not -35.4 pp. So
+    # every macro carries All or Risk in its name, and the difference/CI --
+    # which exist only for the all-cell population -- carry All too.
+    _gall = _gr["all_pairs_aggregate"]
+    assert _gall["n_pairs"] == _grp["n_pairs"], (
+        "all-pairs aggregate and paired estimand disagree on the denominator"
+    )
+
+    cmd("guardedRunAllPairs", str(_grp["n_pairs"]),
+        "task x env cells (incl. benign controls), NOT independent tasks")
     cmd("guardedRunTasks", str(_grp["n_tasks"]))
     cmd("guardedRunRiskPairs", str(_gr["denominator"]["risk_pairs"]))
     cmd("guardedRunBenignPairs", str(_gr["denominator"]["benign_control_pairs"]))
-    cmd("guardedRunBaselineUnsafe",
-        pct1(_gra["baseline_actual_sink_unsafe_rate"]),
-        "delivered-argument propagation, risk mechanisms only")
-    cmd("guardedRunDefenseResidual",
-        pct1(_gra["defense_residual_unsafe_rate"]))
-    cmd("guardedRunDiff",
+
+    cmd("guardedRunAllBaselineUnsafe",
+        pct1(_gall["baseline_actual_sink_unsafe_rate"]),
+        "all 387 cells -- the population the difference and CI below use")
+    cmd("guardedRunAllDefenseResidual",
+        pct1(_gall["defense_residual_unsafe_rate"]))
+    cmd("guardedRunAllDiff",
         signed_pp(_grp["pair_weighted_diff_defense_minus_baseline"]),
         "OBSERVED difference under confounds; not a guard effect estimate")
-    cmd("guardedRunCILo", ci_bound(_grp["pair_weighted_diff_ci95"][0] * 100))
-    cmd("guardedRunCIHi", ci_bound(_grp["pair_weighted_diff_ci95"][1] * 100))
+    cmd("guardedRunAllCILo", ci_bound(_grp["pair_weighted_diff_ci95"][0] * 100))
+    cmd("guardedRunAllCIHi", ci_bound(_grp["pair_weighted_diff_ci95"][1] * 100))
+
+    cmd("guardedRunRiskBaselineUnsafe",
+        pct1(_gra["baseline_actual_sink_unsafe_rate"]),
+        "351 risk cells only -- do NOT pair with the All difference/CI")
+    cmd("guardedRunRiskDefenseResidual",
+        pct1(_gra["defense_residual_unsafe_rate"]))
     _grmc = _grp["mcnemar_discordance"]
     cmd("guardedRunDiscordantC", str(_grmc["c_baseline_unsafe_defense_safe"]))
     cmd("guardedRunDiscordantB", str(_grmc["b_baseline_safe_defense_unsafe"]))
@@ -868,8 +932,15 @@ def main() -> None:
         f"\\texttt{{{_grc['differing_pipeline_commit']['baseline']}}}")
     cmd("guardedRunDefenseCommit",
         f"\\texttt{{{_grc['differing_pipeline_commit']['defense']}}}")
-    cmd("guardedRunBaselineDate", _grc["non_contemporaneous_arms"]["baseline"][0])
-    cmd("guardedRunDefenseDate", _grc["non_contemporaneous_arms"]["defense"][0])
+    # Date RANGES, not first-elements: the baseline arm spans 2026-04-26..27,
+    # and emitting only the first date would understate the gap being disclosed.
+    def _date_span(dates: List[str]) -> str:
+        return dates[0] if len(dates) == 1 else f"{dates[0]}--{dates[-1]}"
+
+    cmd("guardedRunBaselineDate",
+        _date_span(_grc["non_contemporaneous_arms"]["baseline"]))
+    cmd("guardedRunDefenseDate",
+        _date_span(_grc["non_contemporaneous_arms"]["defense"]))
 
     lines.append("")
 
