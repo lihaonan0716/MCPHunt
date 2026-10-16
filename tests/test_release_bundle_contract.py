@@ -127,9 +127,18 @@ class ReleaseBundleContractTest(unittest.TestCase):
     def test_named_citation_keeps_full_arxiv_reference(self) -> None:
         named_meta = CRO.build_metadata(CRO.RELEASE_IDENTITIES["named"])
         named_cite = named_meta["citeAs"]
-        self.assertIn("2604.27819", named_cite)
-        self.assertIn("arxiv.org/abs/2604.27819", named_cite)
+        self.assertIn("eprint = {2604.27819}", named_cite)
+        self.assertIn("archivePrefix = {arXiv}", named_cite)
         self.assertIn("Li, Haonan", named_cite)
+
+    def test_named_citation_matches_openreview_bibtex(self) -> None:
+        # Venue and url follow the OpenReview-issued BibTeX for the accepted
+        # paper; the HF README citation must say the same thing.
+        croissant_cite = CRO.build_metadata(CRO.RELEASE_IDENTITIES["named"])["citeAs"]
+        readme_cite = PREP.STAGING_VARIANTS["named"]["citation"]
+        for cite in (croissant_cite, readme_cite):
+            self.assertIn("openreview.net/forum?id=9mPzIg8uil", cite)
+            self.assertIn("Systems Evaluations and Datasets Track", cite)
 
     def test_croissant_declares_hard_negative_ci_file(self) -> None:
         meta = CRO.build_metadata(CRO.RELEASE_IDENTITIES["named"])

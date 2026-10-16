@@ -80,23 +80,23 @@ RELEASE_IDENTITIES = {
         "authors": "Li, Haonan and Sun, Tianjun and Wang, Yongqing and "
                    "Zhang, Qisheng",
         "url": "https://huggingface.co/datasets/lihaonan0716/mcphunt-agent-traces",
-        # Venue string is taken from neurips_2026.sty:62 (the \@trackname the
-        # eandd option selects), not guessed. The arXiv fields stay: the preprint
-        # exists and has been cited, so dropping them would orphan those
-        # citations.
+        # Venue string and url are the OpenReview-issued BibTeX for the accepted
+        # paper (forum 9mPzIg8uil), not guessed. The arXiv fields stay: the
+        # preprint exists and has been cited, so dropping them would orphan
+        # those citations.
         "citation": (
             "@inproceedings{mcphunt2026,\n"
-            "  title = {MCPHunt: An Evaluation Framework for Cross-Boundary "
-            "Data Propagation in Multi-Server MCP Agents},\n"
+            "  title = {{MCPH}unt: An Evaluation Framework for Cross-Boundary "
+            "Data Propagation in Multi-Server {MCP} Agents},\n"
             "  author = {Li, Haonan and Sun, Tianjun and Wang, Yongqing and "
             "Zhang, Qisheng},\n"
-            "  booktitle = {Advances in Neural Information Processing Systems "
-            "(NeurIPS 2026), Track on Evaluations and Datasets},\n"
+            "  booktitle = {The Fortieth Annual Conference on Neural Information "
+            "Processing Systems Evaluations and Datasets Track},\n"
             "  year = {2026},\n"
             "  eprint = {2604.27819},\n"
             "  archivePrefix = {arXiv},\n"
             "  primaryClass = {cs.CR},\n"
-            "  url = {https://arxiv.org/abs/2604.27819}\n"
+            "  url = {https://openreview.net/forum?id=9mPzIg8uil}\n"
             "}"
         ),
     },

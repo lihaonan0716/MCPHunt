@@ -17,7 +17,7 @@ authors:
     given-names: Qisheng
 preferred-citation:
   type: conference-paper
-  collection-title: "Advances in Neural Information Processing Systems (NeurIPS 2026), Track on Evaluations and Datasets"
+  collection-title: "The Fortieth Annual Conference on Neural Information Processing Systems Evaluations and Datasets Track"
   title: "MCPHunt: An Evaluation Framework for Cross-Boundary Data Propagation in Multi-Server MCP Agents"
   authors:
     - family-names: Li
@@ -32,4 +32,4 @@ preferred-citation:
   identifiers:
     - type: other
       value: "arXiv:2604.27819"
-  url: "https://arxiv.org/abs/2604.27819"
+  url: "https://openreview.net/forum?id=9mPzIg8uil"

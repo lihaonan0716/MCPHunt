@@ -198,15 +198,15 @@ Every numeric value in the paper traces back through:
 
 ```bibtex
 @inproceedings{mcphunt2026,
-  title  = {MCPHunt: An Evaluation Framework for Cross-Boundary Data
-            Propagation in Multi-Server MCP Agents},
+  title  = {{MCPH}unt: An Evaluation Framework for Cross-Boundary Data
+            Propagation in Multi-Server {MCP} Agents},
   author = {Li, Haonan and Sun, Tianjun and Wang, Yongqing and Zhang, Qisheng},
-  booktitle = {Advances in Neural Information Processing Systems
-               (NeurIPS 2026), Track on Evaluations and Datasets},
+  booktitle = {The Fortieth Annual Conference on Neural Information
+               Processing Systems Evaluations and Datasets Track},
   year   = {2026},
   eprint = {2604.27819},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CR},
-  url    = {https://arxiv.org/abs/2604.27819}
+  url    = {https://openreview.net/forum?id=9mPzIg8uil}
 }
 ```

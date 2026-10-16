@@ -72,7 +72,7 @@
     "evaluation"
   ],
   "url": "https://huggingface.co/datasets/lihaonan0716/mcphunt-agent-traces",
-  "citeAs": "@inproceedings{mcphunt2026,\n  title = {MCPHunt: An Evaluation Framework for Cross-Boundary Data Propagation in Multi-Server MCP Agents},\n  author = {Li, Haonan and Sun, Tianjun and Wang, Yongqing and Zhang, Qisheng},\n  booktitle = {Advances in Neural Information Processing Systems (NeurIPS 2026), Track on Evaluations and Datasets},\n  year = {2026},\n  eprint = {2604.27819},\n  archivePrefix = {arXiv},\n  primaryClass = {cs.CR},\n  url = {https://arxiv.org/abs/2604.27819}\n}",
+  "citeAs": "@inproceedings{mcphunt2026,\n  title = {{MCPH}unt: An Evaluation Framework for Cross-Boundary Data Propagation in Multi-Server {MCP} Agents},\n  author = {Li, Haonan and Sun, Tianjun and Wang, Yongqing and Zhang, Qisheng},\n  booktitle = {The Fortieth Annual Conference on Neural Information Processing Systems Evaluations and Datasets Track},\n  year = {2026},\n  eprint = {2604.27819},\n  archivePrefix = {arXiv},\n  primaryClass = {cs.CR},\n  url = {https://openreview.net/forum?id=9mPzIg8uil}\n}",
   "distribution": [
     {
       "@type": "cr:FileObject",
@@ -296,7 +296,7 @@
       "name": "README.md",
       "contentUrl": "README.md",
       "encodingFormat": "text/markdown",
-      "sha256": "b1d7b8a9e17d2101186393acda96bf2aa47971f153185fd58d30667ae34a9b11"
+      "sha256": "51873590498e8871eda0cdf359de20df5184b847f7cd523f565e53691d924e68"
     },
     {
       "@type": "cr:FileObject",

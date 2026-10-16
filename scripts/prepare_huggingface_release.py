@@ -35,20 +35,21 @@ STAGING_VARIANTS = {
         "dir": REPO_ROOT / "artifacts" / "huggingface-staging",
         "hf_repo": "lihaonan0716/mcphunt-agent-traces",
         "authors": "Li, Haonan and Sun, Tianjun and Wang, Yongqing and Zhang, Qisheng",
-        # Venue string from neurips_2026.sty:62; keep in step with the citation
-        # in generate_croissant_metadata.py (pinned by the contract tests).
+        # Venue string and url from the OpenReview-issued BibTeX; keep in step
+        # with the citation in generate_croissant_metadata.py (pinned by the
+        # contract tests).
         "citation": (
             "@inproceedings{mcphunt2026,\n"
-            "  title={MCPHunt: An Evaluation Framework for Cross-Boundary Data Propagation\n"
-            "         in Multi-Server MCP Agents},\n"
+            "  title={{MCPH}unt: An Evaluation Framework for Cross-Boundary Data Propagation\n"
+            "         in Multi-Server {MCP} Agents},\n"
             "  author={Li, Haonan and Sun, Tianjun and Wang, Yongqing and Zhang, Qisheng},\n"
-            "  booktitle={Advances in Neural Information Processing Systems (NeurIPS 2026),\n"
-            "             Track on Evaluations and Datasets},\n"
+            "  booktitle={The Fortieth Annual Conference on Neural Information Processing\n"
+            "             Systems Evaluations and Datasets Track},\n"
             "  year={2026},\n"
             "  eprint={2604.27819},\n"
             "  archivePrefix={arXiv},\n"
             "  primaryClass={cs.CR},\n"
-            "  url={https://arxiv.org/abs/2604.27819}\n"
+            "  url={https://openreview.net/forum?id=9mPzIg8uil}\n"
             "}"
         ),
         # Matching RELEASE_IDENTITIES entry in generate_croissant_metadata.py;

@@ -182,11 +182,12 @@ HAND_TYPED_BASELINE = {
     "paper.tex": 33,
     # 352 -> 351: the Appendix S correction adds two quoted retracted figures
     # (now allowlisted) while one previously-counted literal is covered by the
-    # same entries. Net one fewer unexplained literal.
-    "appendix.tex": 351,
-    # All 3 are on one line (checklist.tex:115): the hardware/wall-clock/turns
-    # claim, removed or macroized in the camera-ready pass.
-    "checklist.tex": 3,
+    # same entries. Net one fewer unexplained literal. 351 -> 350: the
+    # collection-host hardware claim (32 GB RAM) was dropped.
+    "appendix.tex": 350,
+    # Both remaining are on checklist.tex:115 (wall-clock/turns), to be
+    # macroized in the camera-ready pass; 3 -> 2 when the hardware claim left.
+    "checklist.tex": 2,
 }
 
 
