@@ -59,7 +59,7 @@ from mcphunt.labeling import (
     NETWORK_RISK_SIGNALS,
 )
 from mcphunt.taxonomy import (
-    RISK_TASKS, HN_TASKS, CRS_TASKS, TASK_REGISTRY,
+    RISK_TASKS, HN_TASKS, CRS_TASKS, TASK_REGISTRY, WRITE_TOOLS,
 )
 
 REPO = Path(__file__).resolve().parents[1]
@@ -277,6 +277,7 @@ def table_mitigation_cross(lines: List[str]) -> None:
     digit, so rates are rounded only for display, never before arithmetic.
     """
     rows = []
+    rel_m1, rel_m3, m3_rates, m1_zero = [], {}, {}, []
     for slug, levels in MITIG_CROSS.items():
         rates = {}
         for lname, dirname in levels.items():
@@ -297,10 +298,47 @@ def table_mitigation_cross(lines: List[str]) -> None:
                 rel = ("$\\pm$0\\%" if d == 0
                        else f"$-${abs(d)}\\%" if d < 0 else f"$+${d}\\%")
             cells.append(f"{r:.1f}\\% ({rel})")
+            if base_rate:
+                d_exact = (r - base_rate) / base_rate * 100
+                if lname == "M1":
+                    rel_m1.append(-d_exact)
+                    if round(d_exact) == 0:
+                        m1_zero.append(slug)
+                if lname == "M3":
+                    rel_m3[slug] = -d_exact
+                    m3_rates[slug] = r
         rows.append(f"\\model{model_letter(slug)}{{}} & " + " & ".join(cells) + " \\\\")
     emit(lines, "MitigationCrossRows", rows,
          "Table 7: cross-model mitigation, risky_v1 risk tasks; "
          "relative reduction vs each model's own M0")
+    # Section 4.6 prose quotes these cells; same unrounded arithmetic as above.
+    emit_scalar(lines, "mitigCrossMoneMaxRel", f"{round(max(rel_m1))}",
+                "largest M1 relative reduction across models (%)")
+    if len(m1_zero) != 1:
+        raise SystemExit(f"ERROR: prose names one model with 0% M1 change, got {m1_zero}")
+    emit_scalar(lines, "mitigCrossMoneZeroModel", f"\\model{model_letter(m1_zero[0])}{{}}",
+                "the model whose M1 relative change rounds to 0%")
+    for slug, levels in MITIG_CROSS.items():
+        tag = model_letter(slug)
+        # Which mechanism carries each model's residual M3 propagation. The
+        # submitted prose said the M3 rates were "dominated by browser-mediated
+        # tasks"; the share below is what that sentence may claim.
+        m3 = [t for t in load_mitig(levels["M3"])
+              if t.get("env_type") == "risky_v1" and t.get("task_id") in RISK_TASKS
+              and leaked(t)]
+        mech_counts = defaultdict(int)
+        for t in m3:
+            mech_counts[TASK_REGISTRY[t["task_id"]].mechanism] += 1
+        top_mech = max(sorted(mech_counts), key=mech_counts.get)
+        emit_scalar(lines, f"mitigCross{tag}MthreeTopMech", tex_tt(top_mech),
+                    f"{MODEL_SLUGS[slug]}: mechanism with most M3 propagation events")
+        emit_scalar(lines, f"mitigCross{tag}MthreeTopK", str(mech_counts[top_mech]), "")
+        emit_scalar(lines, f"mitigCross{tag}MthreeK", str(len(m3)),
+                    f"{MODEL_SLUGS[slug]}: M3 propagation events, risky_v1")
+        emit_scalar(lines, f"mitigCross{tag}MthreeRel", f"{round(rel_m3[slug])}",
+                    f"{MODEL_SLUGS[slug]} M3 relative reduction (%)")
+        emit_scalar(lines, f"mitigCross{tag}MthreeRate", f"{m3_rates[slug]:.1f}",
+                    f"{MODEL_SLUGS[slug]} M3 risky_v1 rate (%)")
 
 
 def model_letter(slug: str) -> str:
@@ -396,6 +434,54 @@ def table_mechanism_heterogeneity(lines: List[str], primary: List[Dict],
         rows.append(f"{tex_tt(r['m'])} & {rc} & {cc} & {dc} & {pc} & {sig} \\\\")
     emit(lines, "MechanismHeterogeneityRows", rows,
          "Table 14: risky vs control per mechanism, two-sided Fisher's exact")
+
+    # Prose in the case study and Appendix (Statistical Considerations) quotes
+    # individual cells of this table and the Bonferroni threshold derived from
+    # its row count; emit them so the sentences cannot drift from the table.
+    byname = {r["m"]: r for r in recs}
+
+    def key(m: str) -> str:
+        return "".join(p.capitalize() for p in m.split("_"))
+
+    for m, r in byname.items():
+        emit_scalar(lines, f"het{key(m)}Control", f"{r['cr']:.1f}",
+                    f"{m}: control propagation rate (%)")
+        emit_scalar(lines, f"het{key(m)}P",
+                    "$<$0.001" if r["p"] < 0.001 else f"{r['p']:.3f}",
+                    f"{m}: Fisher p, formatted as in Table 14")
+        # Relation plus value, for use inside math after "p": "$p\hetXPRel$"
+        # renders "p<0.001" or "p=0.007" (never "p =<0.001").
+        emit_scalar(lines, f"het{key(m)}PRel",
+                    "<0.001" if r["p"] < 0.001 else f"={r['p']:.3f}",
+                    f"{m}: Fisher p with its relation, math mode")
+    n_ctrl = {len(c_mechs.get(m, [])) for m in MECH_ORDER}
+    n_risk = {len(r_mechs.get(m, [])) for m in MECH_ORDER}
+    if len(n_ctrl) != 1 or len(n_risk) != 1:
+        raise SystemExit(f"ERROR: Table 14 caption assumes equal n per mechanism, "
+                         f"got risky {n_risk} control {n_ctrl}")
+    emit_scalar(lines, "hetRiskyN", str(n_risk.pop()), "risky traces per mechanism")
+    emit_scalar(lines, "hetControlN", str(n_ctrl.pop()), "control traces per mechanism")
+    alpha = 0.05 / len(recs)
+    emit_scalar(lines, "hetTests", str(len(recs)), "Fisher tests, one per mechanism")
+    emit_scalar(lines, "hetBonferroniAlpha", f"{alpha:.4f}",
+                "Bonferroni-corrected alpha for those tests")
+    sig = [r for r in recs if r["p"] < 0.05]
+    sig_corr = [r for r in recs if r["p"] < alpha]
+    emit_scalar(lines, "hetSigCount", str(len(sig)), "mechanisms with p < 0.05")
+    _w = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
+          7: "seven", 8: "eight", 9: "nine"}
+    emit_scalar(lines, "hetSigCountWord", _w[len(sig)].capitalize(),
+                "same, as a sentence-initial word")
+    emit_scalar(lines, "hetNonSigCountWord", _w[len(recs) - len(sig)],
+                "mechanisms with p >= 0.05, as a word")
+    emit_scalar(lines, "hetSigCorrCount", str(len(sig_corr)),
+                "mechanisms significant after Bonferroni")
+    emit_scalar(lines, "hetRiskyGeqControl",
+                str(sum(r["rr"] >= r["cr"] for r in recs)),
+                "mechanisms with risky rate >= control rate")
+    emit_scalar(lines, "hetRiskyGtControl",
+                str(sum(r["rr"] > r["cr"] for r in recs)),
+                "mechanisms with risky rate > control rate")
 
 
 def table_quadrants(lines: List[str], primary: List[Dict]) -> None:
@@ -648,6 +734,31 @@ def table_odds_ratios(lines: List[str], all_data: Dict[str, List[Dict]]) -> None
     _ors = [float(np.exp(res.params[n])) for n in x_mech.columns]
     emit_scalar(lines, "OddsRatioMechSpread", f"{max(_ors) / min(_ors):.0f}",
                 "ratio of largest to smallest mechanism OR")
+    emit_scalar(lines, "OddsRatioTopValueOneDp", f"{top[1]:.1f}",
+                "highest mechanism OR, one decimal as in Table 20")
+    _sig_rest = [n for n in x_mech.columns if n != top[0] and float(res.pvalues[n]) < 0.01]
+    if len(_sig_rest) != len(x_mech.columns) - 1:
+        raise SystemExit("ERROR: appendix says every non-top mechanism has p<0.01; "
+                         f"only {len(_sig_rest)} of {len(x_mech.columns) - 1} do")
+    _w = {6: "six", 7: "seven", 8: "eight", 9: "nine"}
+    emit_scalar(lines, "OddsRatioRestCountWord", _w.get(len(_sig_rest), str(len(_sig_rest))),
+                "mechanisms other than the top one, all p<0.01")
+    # Appendix Q names each model's OR and the non-significant model's p.
+    for slug in x_model.columns:
+        tag = model_letter(slug)
+        emit_scalar(lines, f"OddsRatioModel{tag}",
+                    f"{float(np.exp(res.params[slug])):.1f}",
+                    f"{MODEL_SLUGS[slug]} OR vs {MODEL_SLUGS[ref_model]}")
+        emit_scalar(lines, f"OddsRatioModel{tag}P", f"{float(res.pvalues[slug]):.2f}",
+                    f"{MODEL_SLUGS[slug]} p, two decimals")
+    # Appendix Q fits the same model with CRS as a covariate on all
+    # mechanism-tagged risky traces; its n is quoted in the prose.
+    _all = sum(1 for slug in MODEL_SLUGS for t in risky(all_data[slug])
+               if t.get("task_id") in MECH_IDS)
+    emit_scalar(lines, "OddsRatioFullN", fmt_thousands(_all),
+                "mechanism-tagged risky traces, all models (CRS included)")
+    emit_scalar(lines, "OddsRatioFullTasks", str(len(MECH_IDS)),
+                "mechanism-tagged tasks")
 
 
 def fmt_thousands(n: int) -> str:
@@ -680,6 +791,15 @@ def table_mitigation_aggregate(lines: List[str]) -> None:
                                          util_cells, pv_cells)]
     emit(lines, "MitigationAggregateRows", rows,
          "Table 21: primary-model mitigation levels (risky pooled)")
+    utils = [float(r["util"]) for r in recs]
+    # One decimal, as in Table 21: rounding 80.5 to an integer is ambiguous.
+    emit_scalar(lines, "mitigUtilMin", f"{min(utils):.1f}", "lowest utility across levels (%)")
+    emit_scalar(lines, "mitigUtilMax", f"{max(utils):.1f}", "highest utility across levels (%)")
+    emit_scalar(lines, "mitigPropDropLevelOne", f"{base - recs[1]['prop']:.1f}",
+                "Level 1 drop in total propagation (pp), Table 21 Delta column")
+    pv0, pv1 = float(recs[0]["pv"]), float(recs[1]["pv"])
+    emit_scalar(lines, "mitigPVDropLevelOne", f"{pv0 - pv1:.1f}",
+                "Level 1 drop in policy-violating rate (pp)")
 
 
 def table_mitigation_mechanism(lines: List[str]) -> None:
@@ -709,6 +829,216 @@ def table_mitigation_mechanism(lines: List[str]) -> None:
                     + " & ".join(cols[l][i] for l in MITIG_LEVELS_PRIMARY) + " \\\\")
     emit(lines, "MitigationMechanismRows", rows,
          "Table 22: propagated/total and rate per mechanism x mitigation level")
+    levels = list(MITIG_LEVELS_PRIMARY)
+    drops = {m: float(pct(*grid[(m, levels[0])])) - float(pct(*grid[(m, levels[-1])]))
+             for m in MECH_ORDER}
+    best = max(drops, key=drops.get)
+    worst = max(MECH_ORDER, key=lambda m: float(pct(*grid[(m, levels[-1])])))
+    emit_scalar(lines, "mitigMechBestDrop", tex_tt(best),
+                "mechanism with the largest baseline->Level 3 drop")
+    emit_scalar(lines, "mitigMechBestDropFrom", pct(*grid[(best, levels[0])]), "")
+    emit_scalar(lines, "mitigMechBestDropTo", pct(*grid[(best, levels[-1])]), "")
+    emit_scalar(lines, "mitigMechWorstResidual", tex_tt(worst),
+                "mechanism with the highest Level 3 residual")
+    emit_scalar(lines, "mitigMechWorstResidualRate", pct(*grid[(worst, levels[-1])]), "")
+    emit_scalar(lines, "mitigMechBrowserResidual",
+                pct(*grid[("browser_to_local", levels[-1])]),
+                "browser_to_local Level 3 residual rate (%)")
+    zeros = [m for m in MECH_ORDER if grid[(m, levels[-1])][0] == 0]
+    emit_scalar(lines, "mitigMechZeroAtTop", _prose_list([tex_tt(m) for m in zeros]),
+                "mechanisms with no propagation at Level 3")
+
+
+# ── Browser case study (Appendix: Illustrative Trace) ────────────────
+#
+# The submitted case study was hand-written and three of its claims did not
+# match the released traces: the trace figure's step numbers, tool names and
+# signal list; "API tokens and admin emails" for a task that only ever leaked
+# an admin email; and a "1 of 3 runs redacted (33%)" contrast for a task the
+# primary model leaked in all three runs. Every concrete statement in that
+# section is now emitted from the traces below, and the tests pin each one.
+
+CASE_FIGURE_TASK = ("bw_users_to_db", "risky_v1")
+CASE_TASKS = ("bw_dashboard_report", "bw_full_site_crawl", "bw_monitor_export")
+# The contrast shows the same task WITHOUT propagation: the primary model under
+# an explicit prompt rule, and a second model at baseline. Both are evidence
+# that redaction is achievable for this page, not that it is the default.
+CASE_CONTRAST_TASK = "bw_monitor_export"
+CASE_CONTRAST_MITIG = "gpt54_m2"
+CASE_CONTRAST_MODEL = "gpt_5_2"
+
+# Canary short-names as they appear in labeling risk_details
+# ("canary_flow:turn_N:server.tool:v1_admin_email") -> prose noun.
+CANARY_PROSE = {
+    "admin_email": "admin email",
+    "web_api_token": "service API token",
+    "web_db_pass": "database password",
+    "web_key_alice": "per-user API key",
+    "web_key_bob": "per-user API key",
+}
+
+
+def _prose_list(items: Sequence[str]) -> str:
+    items = list(items)
+    if len(items) <= 2:
+        return " and ".join(items)
+    return ", ".join(items[:-1]) + ", and " + items[-1]
+
+# Tools whose arguments the figure describes, mapped to what the row says the
+# step did. Anything else in the trace is summarised as an inspection step.
+CASE_READ_TOOLS = {"browser_snapshot": "reads the rendered page",
+                   "read_query": "joins \\texttt{users}$\\times$\\texttt{api\\_keys}"}
+
+
+def _case_runs(traces: Sequence[Dict], task_id: str) -> List[Dict]:
+    runs = sorted((t for t in traces
+                   if t["task_id"] == task_id and t["env_type"].startswith("risky")),
+                  key=lambda t: t["env_type"])
+    if len(runs) != 3:
+        raise SystemExit(f"ERROR: case study expects 3 risky runs of {task_id}, "
+                         f"found {len(runs)}")
+    return runs
+
+
+def _leaked_canary_kinds(t: Dict) -> List[str]:
+    kinds = []
+    for d in t["labeling"].get("risk_details") or []:
+        if d.startswith("canary_flow:"):
+            name = d.rsplit(":", 1)[1].split("_", 1)[1]  # drop variant prefix
+            if name not in CANARY_PROSE:
+                raise SystemExit(f"ERROR: no prose noun for leaked canary {name!r}")
+            kinds.append(CANARY_PROSE[name])
+    return sorted(set(kinds))
+
+
+def _signals(t: Dict) -> List[str]:
+    return sorted(k for k, v in t["labeling"]["risk_signals"].items() if v)
+
+
+def _number_word(n: int) -> str:
+    words = {0: "none", 1: "one", 2: "two", 3: "all three"}
+    return words.get(n, str(n))
+
+
+def case_study_browser(lines: List[str], primary: List[Dict]) -> None:
+    """Emit every concrete claim in the browser case study from the traces."""
+    # ---- Trace figure ----------------------------------------------------
+    tid, env = CASE_FIGURE_TASK
+    t = next(x for x in primary if x["task_id"] == tid and x["env_type"] == env)
+    if t["task_id"] in CRS_TASKS:
+        raise SystemExit(f"ERROR: figure task {tid} must be non-CRS")
+    ev = t["events"]
+    first_visible = next(i for i, e in enumerate(ev, 1)
+                         if e["server"] == "browser" and e.get("canary_in_result"))
+    first_db_read = next(i for i, e in enumerate(ev, 1)
+                         if e["tool"] == "read_query" and e.get("canary_in_result"))
+    first_write = next(i for i, e in enumerate(ev, 1)
+                       if e["tool"] in WRITE_TOOLS and e.get("canary_in_args"))
+    if not first_visible < first_write:
+        raise SystemExit("ERROR: figure trace writes before the browser read")
+    leaked_canaries = [c for c in (t["labeling"].get("risk_details") or [])
+                       if c.startswith("canary_flow:")]
+    turn_of_flow = {int(c.split(":")[1].split("_")[1]) for c in leaked_canaries}
+    if turn_of_flow != {ev[first_write - 1]["turn"]}:
+        raise SystemExit("ERROR: labeling places the leak at a different step "
+                         f"({turn_of_flow}) than the figure ({first_write})")
+
+    def step(i: int) -> str:
+        e = ev[i - 1]
+        return f"\\texttt{{[{i}] {e['server']}::{tex_tt(e['tool'])[8:-1]}}}"
+
+    # Canary values the figure quotes: the first canary (registry order) found
+    # in each step's result, with exact-substring matching as the detector uses.
+    from mcphunt.canary_registry import find_canary_matches, get_canaries
+    canaries = get_canaries(env)
+
+    def canary_in(i: int) -> str:
+        hits = find_canary_matches(str(ev[i - 1].get("result_full") or ""), canaries)
+        if not hits:
+            raise SystemExit(f"ERROR: figure step {i} result holds no canary")
+        return hits[0].value
+
+    written = find_canary_matches(str(ev[first_write - 1]["args"]), canaries)
+    read_val = canary_in(first_visible)
+    if read_val not in {c.value for c in written}:
+        raise SystemExit("ERROR: the canary quoted at the browser read is not "
+                         "among those written at the write step")
+    inspect_tools = sorted({ev[i - 1]["tool"] for i in
+                            range(first_visible + 1, first_db_read)})
+
+    emit_scalar(lines, "caseFigTask", tex_tt(tid), "trace figure task (non-CRS)")
+    emit_scalar(lines, "caseFigPort", ev[0]["args"]["url"].split(":")[2].split("/")[0],
+                "port in the figure prompt, as recorded")
+    emit_scalar(lines, "caseFigReadStep", str(first_visible),
+                "first browser step whose result holds a canary")
+    emit_scalar(lines, "caseFigReadTool", step(first_visible), "")
+    tt = lambda v: tex_tt(v)  # noqa: E731 -- canary values contain underscores
+    emit_scalar(lines, "caseFigReadCanary", tt(read_val),
+                "canary in the browser step's result (also written later)")
+    emit_scalar(lines, "caseFigReadCanaryShort", tt(read_val[:11]) [:-1] + "\\ldots}",
+                "same, truncated for the write row")
+    emit_scalar(lines, "caseFigDbCanary", tt(canary_in(first_db_read)),
+                "canary in the DB read step's result")
+    emit_scalar(lines, "caseFigInspectTools",
+                "\\texttt{sqlite::" + " / ".join(tex_tt(x)[8:-1] for x in inspect_tools) + "}",
+                "tools between the browser read and the DB read")
+    emit_scalar(lines, "caseFigInspectFrom", str(first_visible + 1), "")
+    emit_scalar(lines, "caseFigInspectTo", str(first_db_read - 1), "")
+    emit_scalar(lines, "caseFigDbStep", str(first_db_read),
+                "first DB read whose result holds a canary")
+    emit_scalar(lines, "caseFigDbTool", step(first_db_read), "")
+    emit_scalar(lines, "caseFigWriteStep", str(first_write),
+                "first write whose arguments hold a canary")
+    emit_scalar(lines, "caseFigWriteTool", step(first_write), "")
+    emit_scalar(lines, "caseFigLeakedCount", str(len(leaked_canaries)),
+                "distinct canaries written in that step")
+    emit_scalar(lines, "caseFigOutcome", t["outcome"].replace("_", "-"), "")
+    emit_scalar(lines, "caseFigSignals",
+                ", ".join(tex_tt(s) for s in _signals(t)), "")
+
+    # ---- Primary-model case tasks ---------------------------------------
+    for tid in CASE_TASKS:
+        if tid in CRS_TASKS:
+            raise SystemExit(f"ERROR: case task {tid} must be non-CRS")
+        runs = _case_runs(primary, tid)
+        k = sum(leaked(r) for r in runs)
+        kinds = sorted({k_ for r in runs for k_ in _leaked_canary_kinds(r)})
+        counts = [int(r["labeling"].get("data_flow_leaked_canaries") or 0) for r in runs]
+        key = "case" + "".join(p.capitalize() for p in tid.split("_")[1:])
+        emit_scalar(lines, key + "Leaked", _number_word(k),
+                    f"{tid}: risky runs with propagation (of 3)")
+        emit_scalar(lines, key + "Kinds", _prose_list(kinds),
+            f"{tid}: canary kinds leaked across runs")
+        emit_scalar(lines, key + "MaxCanaries", str(max(counts)),
+                    f"{tid}: most canaries leaked in one run")
+        emit_scalar(lines, key + "RunsAtMax", _number_word(counts.count(max(counts))),
+                    f"{tid}: runs reaching that maximum")
+        # Signals that fired in every run, and those that fired in only some:
+        # a bare union reads as if each signal fired every time.
+        every = sorted(set.intersection(*(set(_signals(r)) for r in runs)))
+        some = sorted({s for r in runs for s in _signals(r)} - set(every))
+        text = _prose_list([tex_tt(s) for s in every]) + " in every run"
+        if some:
+            text += ", plus " + _prose_list([
+                f"{tex_tt(s)} in {_number_word(sum(s in _signals(r) for r in runs))}"
+                for s in some])
+        emit_scalar(lines, key + "Signals", text, f"{tid}: signals across runs")
+
+    # ---- Contrast: same task, no propagation ----------------------------
+    base = _case_runs(primary, CASE_CONTRAST_TASK)
+    mit = _case_runs(load_mitig(CASE_CONTRAST_MITIG), CASE_CONTRAST_TASK)
+    other = _case_runs(load_traces(CASE_CONTRAST_MODEL), CASE_CONTRAST_TASK)
+    emit_scalar(lines, "caseContrastBaseLeaked", str(sum(leaked(r) for r in base)),
+                "primary model, baseline: risky runs with propagation (of 3)")
+    emit_scalar(lines, "caseContrastMitigLeaked", str(sum(leaked(r) for r in mit)),
+                "primary model, Level 2 prompt: risky runs with propagation (of 3)")
+    emit_scalar(lines, "caseContrastMitigSafeSuccess",
+                str(sum(r["outcome"] == "safe_success" for r in mit)),
+                "primary model, Level 2 prompt: runs completed without propagation")
+    emit_scalar(lines, "caseContrastOtherSafeSuccess",
+                str(sum(r["outcome"] == "safe_success" for r in other)),
+                f"{MODEL_SLUGS[CASE_CONTRAST_MODEL]}, baseline: runs completed "
+                "without propagation (of 3)")
 
 
 def main() -> None:
@@ -751,6 +1081,7 @@ def main() -> None:
     table_odds_ratios(lines, all_data)
     table_mitigation_aggregate(lines)
     table_mitigation_mechanism(lines)
+    case_study_browser(lines, primary)
 
     OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
     n_macros = sum(1 for l in lines if l.startswith("\\newcommand"))

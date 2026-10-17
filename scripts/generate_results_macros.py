@@ -516,6 +516,10 @@ def main() -> None:
     cmd("twoByTwoSurfPlacN", str(len(hn1_hn)))
     cmd("twoByTwoSurfProd", fmt_pct(sum(is_unsafe(t) for t in rv1_benign), len(rv1_benign)))
     cmd("twoByTwoSurfPlac", fmt_pct(sum(is_unsafe(t) for t in hn1_hn), len(hn1_hn)))
+    for tag, pool in (("Prod", rv1_benign), ("Plac", hn1_hn)):
+        lo, hi = wilson_ci(sum(is_unsafe(t) for t in pool), len(pool))
+        cmd(f"twoByTwoSurf{tag}CILo", f"{lo:.1f}")
+        cmd(f"twoByTwoSurf{tag}CIHi", f"{hi:.1f}")
 
     lines.append("")
 
@@ -553,10 +557,38 @@ def main() -> None:
     # Per-mechanism non-CRS for inline reference
     nc_mechs = by_mechanism([t for t in risky(primary)
                              if t["task_id"] not in CRS_TASKS])
-    for m in ["browser_to_local", "file_to_file"]:
+    crs_mechs = by_mechanism([t for t in risky(primary) if t["task_id"] in CRS_TASKS])
+    for m in sorted(nc_mechs):
         sub = nc_mechs.get(m, [])
         tag = m.replace("_", "")
         cmd(f"pvMech{tag}Pct", fmt_pct(sum(is_unsafe(t) for t in sub), len(sub)))
+        cmd(f"pvMech{tag}K", str(sum(is_unsafe(t) for t in sub)))
+        csub = crs_mechs.get(m, [])
+        if csub:
+            cmd(f"crsMech{tag}Pct", fmt_pct(sum(is_unsafe(t) for t in csub), len(csub)))
+    # Appendix prose: "browser_to_local accounts for K of the N policy-violating
+    # events (X% ...)" and the CRS-rate range over mechanisms that have CRS tasks.
+    _pv_all = sum(is_unsafe(t) for t in nc)
+    _pv_btl = sum(is_unsafe(t) for t in nc_mechs.get("browser_to_local", []))
+    cmd("pvBrowserShareOfAll", f"{_pv_btl / _pv_all * 100:.0f}",
+        "browser_to_local share of all non-CRS propagation events (%)")
+    _crs_rates = [sum(is_unsafe(t) for t in v) / len(v) * 100
+                  for v in crs_mechs.values() if v]
+    cmd("crsMechRateMin", f"{min(_crs_rates):.0f}", "lowest per-mechanism CRS rate (%)")
+    cmd("crsMechRateMax", f"{max(_crs_rates):.0f}", "highest per-mechanism CRS rate (%)")
+    # Mechanisms with no CRS task: their whole risky rate is policy-violating.
+    _no_crs = [m for m in nc_mechs if not crs_mechs.get(m)]
+    _no_crs_rates = [float(fmt_pct(sum(is_unsafe(t) for t in nc_mechs[m]),
+                                   len(nc_mechs[m]))) for m in _no_crs]
+    cmd("noCrsMechCount", str(len(_no_crs)), "mechanisms with zero CRS tasks")
+    _words = {1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six"}
+    cmd("noCrsMechCountWord", _words.get(len(_no_crs), str(len(_no_crs))),
+        "same, as a sentence-initial word")
+    _names = [f"\\texttt{{{m.replace('_', chr(92) + '_')}}}" for m in sorted(_no_crs)]
+    cmd("noCrsMechList", ", ".join(_names[:-1]) + ", and " + _names[-1],
+        "the mechanisms with zero CRS tasks")
+    cmd("noCrsMechRateMin", f"{min(_no_crs_rates):.1f}", "")
+    cmd("noCrsMechRateMax", f"{max(_no_crs_rates):.1f}", "")
 
     lines.append("")
 
