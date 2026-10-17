@@ -188,7 +188,10 @@ HAND_TYPED_BASELINE = {
     # compute-resource figures now come from the \cost* macros. 345 -> 126:
     # the appendix result tables now take their rows from results_tables.tex.
     # 126 -> 122: the 2x2 table CIs come from the \hnPair* macros.
-    "appendix.tex": 122,
+    # 122 -> 49: Tables 13, 14 and 15 (CRS-by-mechanism, risky-vs-control,
+    # primary signal counts) were missed by the first table swap and now
+    # take their rows from results_tables.tex as well.
+    "appendix.tex": 49,
     # The compute justification (checklist.tex:115) is fully macro-sourced.
     "checklist.tex": 0,
 }
