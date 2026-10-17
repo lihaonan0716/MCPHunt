@@ -187,7 +187,8 @@ HAND_TYPED_BASELINE = {
     # collection-host hardware claim (32 GB RAM) was dropped. 350 -> 345: the
     # compute-resource figures now come from the \cost* macros. 345 -> 126:
     # the appendix result tables now take their rows from results_tables.tex.
-    "appendix.tex": 126,
+    # 126 -> 122: the 2x2 table CIs come from the \hnPair* macros.
+    "appendix.tex": 122,
     # The compute justification (checklist.tex:115) is fully macro-sourced.
     "checklist.tex": 0,
 }
