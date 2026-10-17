@@ -296,7 +296,7 @@
       "name": "README.md",
       "contentUrl": "README.md",
       "encodingFormat": "text/markdown",
-      "sha256": "51873590498e8871eda0cdf359de20df5184b847f7cd523f565e53691d924e68"
+      "sha256": "c81a19990eaa30f182d1388b0f51e663211e14b056d36ad571e96dfb0bb7228d"
     },
     {
       "@type": "cr:FileObject",
@@ -516,7 +516,7 @@
       "@type": "cr:RecordSet",
       "@id": "recall_evaluation",
       "name": "recall_evaluation",
-      "description": "Single-record LLM-judge recall estimation over a seeded SRS sample (n=150, seed=20260729) of detector-clean no-defense traces. Estimates the prevalence of secret propagation missed by the exact-substring detector within the detector-clean pool. Point estimates are judge-estimated (Claude Opus judge), not human ground truth; confidence intervals are Wilson score 95%.",
+      "description": "Single-record detector-clean miss-prevalence diagnostic over a seeded simple random sample (n=150, seed=20260729) of risky-environment, no-defense traces that read a canary but were not flagged by the exact-substring detector. One LLM judge (Claude Opus) flagged traces whose outbound events contain a canary, a fragment, or a description of one. A rubric-positive prevalence (Wilson 95%, sampling error only), not a recall, false-negative rate, or credential-propagation miss rate. The record-set name is kept for compatibility with earlier releases.",
       "field": [
         {
           "@type": "cr:Field",
@@ -582,7 +582,7 @@
           "@type": "cr:Field",
           "@id": "recall_judge_model",
           "name": "judge_model",
-          "description": "LLM judge model used to estimate misses.",
+          "description": "LLM judge model that produced the per-trace judgments.",
           "dataType": "sc:Text",
           "source": {
             "fileObject": {

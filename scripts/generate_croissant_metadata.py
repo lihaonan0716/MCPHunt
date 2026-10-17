@@ -303,7 +303,7 @@ def build_metadata(identity: Dict[str, str]) -> Dict[str, Any]:
         _field("recall_complete_case_point", "Complete-case point estimate of detector-clean miss prevalence (judge-estimated).", "sc:Float", "$.detector_clean_miss_prevalence_complete_case", _RC),
         _field("recall_ci_method", "Confidence-interval method (Wilson score 95% primary).", "sc:Text", "$.ci_method", _RC),
         _field("recall_seed", "Sampling seed for the seeded SRS draw.", "sc:Integer", "$.seed", _RC),
-        _field("recall_judge_model", "LLM judge model used to estimate misses.", "sc:Text", "$.judge_model", _RC),
+        _field("recall_judge_model", "LLM judge model that produced the per-trace judgments.", "sc:Text", "$.judge_model", _RC),
     ]
     # _field() names the field after its @id; the released schema uses the raw
     # JSON key as the field name, so restore those without duplicating @ids.
@@ -361,13 +361,16 @@ def build_metadata(identity: Dict[str, str]) -> Dict[str, Any]:
                 "@id": "recall_evaluation",
                 "name": "recall_evaluation",
                 "description": (
-                    "Single-record LLM-judge recall estimation over a seeded "
-                    "SRS sample (n=150, seed=20260729) of detector-clean "
-                    "no-defense traces. Estimates the prevalence of secret "
-                    "propagation missed by the exact-substring detector within "
-                    "the detector-clean pool. Point estimates are "
-                    "judge-estimated (Claude Opus judge), not human ground "
-                    "truth; confidence intervals are Wilson score 95%."
+                    "Single-record detector-clean miss-prevalence diagnostic "
+                    "over a seeded simple random sample (n=150, seed=20260729) "
+                    "of risky-environment, no-defense traces that read a canary "
+                    "but were not flagged by the exact-substring detector. One "
+                    "LLM judge (Claude Opus) flagged traces whose outbound "
+                    "events contain a canary, a fragment, or a description of "
+                    "one. A rubric-positive prevalence (Wilson 95%, sampling "
+                    "error only), not a recall, false-negative rate, or "
+                    "credential-propagation miss rate. The record-set name is "
+                    "kept for compatibility with earlier releases."
                 ),
                 "field": recall_fields,
             },

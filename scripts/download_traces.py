@@ -72,6 +72,10 @@ PAIRED_META_FILES = [
      "mitigation_analysis/live_guard_deepseek_v4_flash_paired.json"),
     ("meta/hard_negative_ci.json",
      "hard_negative_analysis/hard_negative_ci.json"),
+    # Detector-clean miss-prevalence diagnostic (paper Appendix T). Restored
+    # under its run-tagged source name, which generate_results_macros.py reads.
+    ("recall_evaluation/recall_estimation.json",
+     "recall_evaluation/recall_estimation_claude-opus-4-8_seed20260729_n150.json"),
 ]
 
 

@@ -108,7 +108,8 @@ PAIRED_META = [
 # kappa quoted in the metadata recomputes from exactly these bytes.
 CRS_AUDIT_FILES = ["README.md", "annotation_1.csv", "annotation_2.csv"]
 
-# Judge-based recall diagnostic. Released as its own split (not under meta/)
+# Detector-clean miss-prevalence diagnostic (paper Appendix T). Released as its
+# own split (not under meta/)
 # because it is a single-record estimate over a seeded sample rather than an
 # aggregate of the trace splits, and AC-2 quotes its headline externally.
 # The source filename carries the run tag; the released name is stable.
@@ -205,14 +206,17 @@ supplemental strata.
   `hard_negative_ci.json` (the risky-vs-hard-negative matched 2x2, its Tango
   score interval, and the exact McNemar p-value).
 - **`recall_evaluation/`** — `recall_estimation.json`, a single-record
-  LLM-judge recall estimate over a seeded SRS sample (n=150, seed=20260729) of
-  detector-clean no-defense traces. It estimates the prevalence of secret
-  propagation missed by the exact-substring detector within the detector-clean
-  pool. Point estimates are judge-estimated (Claude Opus judge), not human
-  ground truth; confidence intervals are Wilson score 95%. This quantifies the
-  non-verbatim undercount of the conservative, verbatim-only substring detector
-  and is diagnostic only — it does not modify any per-trace label in the other
-  splits.
+  detector-clean miss-prevalence diagnostic (paper Appendix T) over a seeded
+  simple random sample (n=150, seed=20260729) of the 698 risky-environment,
+  no-defense main-benchmark traces that read a canary but were not flagged by
+  the exact-substring detector. One LLM judge (Claude Opus), given each
+  environment's canary values, flagged traces whose outbound events contain a
+  canary, a fragment of one, or a description of one. The result is a
+  rubric-positive prevalence over the detector's own clean output (Wilson 95%
+  interval, sampling error only). It is **not** a recall, a false-negative
+  rate, or a credential-propagation miss rate, and it does not modify any
+  per-trace label in the other splits. The directory and file names are kept
+  for compatibility with earlier releases.
 - **`crs_audit/`** — raw labels (`annotation_1.csv`, `annotation_2.csv`) and
   protocol (`README.md`) of the post-submission blind CRS audit by two
   non-author annotators. The same files are in the code repository under

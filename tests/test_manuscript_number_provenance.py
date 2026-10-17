@@ -482,6 +482,8 @@ class TestSupplementalMacrosMatchArtifacts(unittest.TestCase):
 
     def test_miss_prevalence_first_run_band_brackets_reported_value(self):
         """The appendix says the first run's band brackets the reported value."""
+        if not self.grm.MISS_PREVALENCE_FIRST_RUN_ARTIFACT.exists():
+            self.skipTest("first-run archive is local-only (not released)")
         art = json.loads(self.grm.MISS_PREVALENCE_FIRST_RUN_ARTIFACT.read_text(
             encoding="utf-8"))
         self.assertEqual(self.macro("missPrevFirstRunInvalid"),

@@ -1070,17 +1070,25 @@ def main() -> None:
     )
     cmd("missPrevSeed", str(_mp["seed"]))
     cmd("missPrevJudge", _mp["judge_model"])
-    _r1 = require_artifact(MISS_PREVALENCE_FIRST_RUN_ARTIFACT, "estimand",
-                           "pooled_detector_clean_miss_prevalence")
-    assert _r1["sampling_frame_hash"] == _mp["sampling_frame_hash"], (
-        "first-run artifact was drawn from a different sampling frame"
-    )
-    _r1b = _r1["detector_clean_miss_prevalence_bounds"]
-    cmd("missPrevFirstRunInvalid", str(_r1["permanent_invalid_m"]))
-    cmd("missPrevFirstRunLo",
-        pct1(_r1b["optimistic"]["detector_clean_miss_prevalence"]))
-    cmd("missPrevFirstRunHi",
-        pct1(_r1b["pessimistic"]["detector_clean_miss_prevalence"]))
+    # The first-run archive is a local provenance record, not part of the public
+    # release, and the paper does not \input these three macros (it states the
+    # bracketing qualitatively). Skip them when the file is absent rather than
+    # making a fresh clone fail; when present, still check the claim's premise.
+    if MISS_PREVALENCE_FIRST_RUN_ARTIFACT.exists():
+        _r1 = require_artifact(MISS_PREVALENCE_FIRST_RUN_ARTIFACT, "estimand",
+                               "pooled_detector_clean_miss_prevalence")
+        assert _r1["sampling_frame_hash"] == _mp["sampling_frame_hash"], (
+            "first-run artifact was drawn from a different sampling frame"
+        )
+        _r1b = _r1["detector_clean_miss_prevalence_bounds"]
+        cmd("missPrevFirstRunInvalid", str(_r1["permanent_invalid_m"]))
+        cmd("missPrevFirstRunLo",
+            pct1(_r1b["optimistic"]["detector_clean_miss_prevalence"]))
+        cmd("missPrevFirstRunHi",
+            pct1(_r1b["pessimistic"]["detector_clean_miss_prevalence"]))
+    else:
+        print(f"  note: {_rel(MISS_PREVALENCE_FIRST_RUN_ARTIFACT)} absent "
+              "(local archive, not released); missPrevFirstRun* macros skipped")
 
     lines.append("")
     lines.append(f"% Generated from {total_main} main + {total_mitig} mitigation traces")

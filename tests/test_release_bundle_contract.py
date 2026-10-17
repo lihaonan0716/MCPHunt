@@ -88,8 +88,17 @@ class DownloadRestoreContractTest(unittest.TestCase):
                  "mitigation_analysis/live_guard_deepseek_v4_flash_paired.json"),
                 ("meta/hard_negative_ci.json",
                  "hard_negative_analysis/hard_negative_ci.json"),
+                # The manuscript's miss-prevalence macros read this file under
+                # its run-tagged name, so a fresh clone must restore it there.
+                ("recall_evaluation/recall_estimation.json",
+                 "recall_evaluation/recall_estimation_claude-opus-4-8_seed20260729_n150.json"),
             },
         )
+
+    def test_restored_recall_path_is_what_the_macro_generator_reads(self) -> None:
+        import generate_results_macros as grm
+        restored = dict(DL.PAIRED_META_FILES)["recall_evaluation/recall_estimation.json"]
+        self.assertEqual(DL.RESULTS_DIR / restored, grm.MISS_PREVALENCE_ARTIFACT)
 
 
 class ReleaseBundleContractTest(unittest.TestCase):
