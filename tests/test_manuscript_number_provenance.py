@@ -183,11 +183,11 @@ HAND_TYPED_BASELINE = {
     # 352 -> 351: the Appendix S correction adds two quoted retracted figures
     # (now allowlisted) while one previously-counted literal is covered by the
     # same entries. Net one fewer unexplained literal. 351 -> 350: the
-    # collection-host hardware claim (32 GB RAM) was dropped.
-    "appendix.tex": 350,
-    # Both remaining are on checklist.tex:115 (wall-clock/turns), to be
-    # macroized in the camera-ready pass; 3 -> 2 when the hardware claim left.
-    "checklist.tex": 2,
+    # collection-host hardware claim (32 GB RAM) was dropped. 350 -> 345: the
+    # compute-resource figures now come from the \cost* macros.
+    "appendix.tex": 345,
+    # The compute justification (checklist.tex:115) is fully macro-sourced.
+    "checklist.tex": 0,
 }
 
 
