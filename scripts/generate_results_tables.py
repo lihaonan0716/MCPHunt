@@ -548,6 +548,12 @@ def table_multi_model_signals(lines: List[str],
                     + " & ".join(cols[s][i] for s in MODEL_SLUGS) + " \\\\")
     emit(lines, "MultiModelSignalRows", rows,
          "Table 19: signal counts x model (risky); all-zero signals omitted")
+    omitted = sorted(s for s in ALL_SIGNALS if s not in shown)
+    emit_scalar(lines, "MultiModelSignalOmittedCount", str(len(omitted)),
+                "signals zero for every model, omitted from Table 19")
+    emit_scalar(lines, "MultiModelSignalOmittedList",
+                ", ".join(tex_tt(s) for s in omitted),
+                "the omitted signals, for the Table 19 caption")
 
 
 def table_odds_ratios(lines: List[str], all_data: Dict[str, List[Dict]]) -> None:

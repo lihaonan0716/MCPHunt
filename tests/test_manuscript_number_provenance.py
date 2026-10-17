@@ -178,14 +178,16 @@ def _tex_lines(name: str):
 # it to STRUCTURAL_LITERALS with a reason.
 HAND_TYPED_BASELINE = {
     # Lowered 35 -> 33 when the retracted cross-model guard figures left the
-    # body (see Appendix S). The ratchet only moves down.
-    "paper.tex": 33,
+    # body (see Appendix S). The ratchet only moves down. 33 -> 14: the
+    # cross-model mitigation table rows come from results_tables.tex.
+    "paper.tex": 14,
     # 352 -> 351: the Appendix S correction adds two quoted retracted figures
     # (now allowlisted) while one previously-counted literal is covered by the
     # same entries. Net one fewer unexplained literal. 351 -> 350: the
     # collection-host hardware claim (32 GB RAM) was dropped. 350 -> 345: the
-    # compute-resource figures now come from the \cost* macros.
-    "appendix.tex": 345,
+    # compute-resource figures now come from the \cost* macros. 345 -> 126:
+    # the appendix result tables now take their rows from results_tables.tex.
+    "appendix.tex": 126,
     # The compute justification (checklist.tex:115) is fully macro-sourced.
     "checklist.tex": 0,
 }
