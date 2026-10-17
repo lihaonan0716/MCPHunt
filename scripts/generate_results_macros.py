@@ -47,6 +47,14 @@ MISS_PREVALENCE_ARTIFACT = (
     REPO / "results" / "recall_evaluation"
     / "recall_estimation_claude-opus-4-8_seed20260729_n150.json"
 )
+# First invocation of the same draw, run without the pre-specified retry. The
+# paper states only qualitatively that its band brackets the reported value
+# (this file is not in the public release); the missPrevFirstRun* macros back
+# that claim with a local check rather than appearing in the text.
+MISS_PREVALENCE_FIRST_RUN_ARTIFACT = (
+    REPO / "results" / "recall_evaluation" / "archive"
+    / "recall_estimation_claude-opus-4-8_seed20260729_n150_run1_report-policy.json"
+)
 # Historical single-model guarded collection run. DISTINCT from the same-day
 # live pilot above: different arms, different denominators, weaker control.
 # Macro names are deliberately prefixed `guardedRun*` (never `liveGuard*`) so a
@@ -1028,6 +1036,19 @@ def main() -> None:
         "a verbatim leak now appears in the detector-clean sample; the "
         "'no full-canary reproduction' claim must be retracted"
     )
+    cmd("missPrevSeed", str(_mp["seed"]))
+    cmd("missPrevJudge", _mp["judge_model"])
+    _r1 = require_artifact(MISS_PREVALENCE_FIRST_RUN_ARTIFACT, "estimand",
+                           "pooled_detector_clean_miss_prevalence")
+    assert _r1["sampling_frame_hash"] == _mp["sampling_frame_hash"], (
+        "first-run artifact was drawn from a different sampling frame"
+    )
+    _r1b = _r1["detector_clean_miss_prevalence_bounds"]
+    cmd("missPrevFirstRunInvalid", str(_r1["permanent_invalid_m"]))
+    cmd("missPrevFirstRunLo",
+        pct1(_r1b["optimistic"]["detector_clean_miss_prevalence"]))
+    cmd("missPrevFirstRunHi",
+        pct1(_r1b["pessimistic"]["detector_clean_miss_prevalence"]))
 
     lines.append("")
     lines.append(f"% Generated from {total_main} main + {total_mitig} mitigation traces")

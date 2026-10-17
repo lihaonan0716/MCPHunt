@@ -414,6 +414,18 @@ class TestSupplementalMacrosMatchArtifacts(unittest.TestCase):
         # The "no full-canary reproduction" claim depends on this being zero.
         self.assertEqual(art["leak_type_breakdown"]["verbatim"], 0)
         self.assertEqual(self.macro("missPrevVerbatim"), "0")
+        self.assertEqual(self.macro("missPrevSeed"), str(art["seed"]))
+
+    def test_miss_prevalence_first_run_band_brackets_reported_value(self):
+        """The appendix says the first run's band brackets the reported value."""
+        art = json.loads(self.grm.MISS_PREVALENCE_FIRST_RUN_ARTIFACT.read_text(
+            encoding="utf-8"))
+        self.assertEqual(self.macro("missPrevFirstRunInvalid"),
+                         str(art["permanent_invalid_m"]))
+        lo = float(self.macro("missPrevFirstRunLo"))
+        hi = float(self.macro("missPrevFirstRunHi"))
+        self.assertLessEqual(lo, float(self.macro("missPrevPct")))
+        self.assertLessEqual(float(self.macro("missPrevPct")), hi)
 
     def test_collection_cost_macros_match_traces(self):
         """Wall-clock and token macros must equal a direct scan of the traces."""
