@@ -480,18 +480,13 @@ class TestSupplementalMacrosMatchArtifacts(unittest.TestCase):
         self.assertEqual(self.macro("missPrevVerbatim"), "0")
         self.assertEqual(self.macro("missPrevSeed"), str(art["seed"]))
 
-    def test_miss_prevalence_first_run_band_brackets_reported_value(self):
-        """The appendix says the first run's band brackets the reported value."""
-        if not self.grm.MISS_PREVALENCE_FIRST_RUN_ARTIFACT.exists():
-            self.skipTest("first-run archive is local-only (not released)")
-        art = json.loads(self.grm.MISS_PREVALENCE_FIRST_RUN_ARTIFACT.read_text(
+    def test_reported_miss_prevalence_run_has_no_invalid_judgments(self):
+        """The appendix says the reported run leaves no judgment invalid."""
+        art = json.loads(self.grm.MISS_PREVALENCE_ARTIFACT.read_text(
             encoding="utf-8"))
-        self.assertEqual(self.macro("missPrevFirstRunInvalid"),
-                         str(art["permanent_invalid_m"]))
-        lo = float(self.macro("missPrevFirstRunLo"))
-        hi = float(self.macro("missPrevFirstRunHi"))
-        self.assertLessEqual(lo, float(self.macro("missPrevPct")))
-        self.assertLessEqual(float(self.macro("missPrevPct")), hi)
+        self.assertEqual(art["retry_policy"], "retry")
+        self.assertEqual(art["permanent_invalid_m"], 0)
+        self.assertEqual(art["remaining_invalid_after_retry"], 0)
 
     def test_collection_cost_macros_match_traces(self):
         """Wall-clock and token macros must equal a direct scan of the traces."""
