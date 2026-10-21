@@ -730,10 +730,11 @@ def table_odds_ratios(lines: List[str], all_data: Dict[str, List[Dict]]) -> None
     emit_scalar(lines, "OddsRatioMechMaxP",
                 "0.01" if _maxp < 0.01 else f"{_maxp:.3f}",
                 "weakest mechanism significance level (prose says 'all p<X')")
-    # OR spread backs the "varies by more than 20x" claim in appendix Q.
+    # OR spread backs the "varies by more than Nx" claim in appendix Q.
     _ors = [float(np.exp(res.params[n])) for n in x_mech.columns]
-    emit_scalar(lines, "OddsRatioMechSpread", f"{max(_ors) / min(_ors):.0f}",
-                "ratio of largest to smallest mechanism OR")
+    # Floor, not round: the prose says "more than", and 21.97 rounds to 22.
+    emit_scalar(lines, "OddsRatioMechSpread", f"{int(max(_ors) / min(_ors))}",
+                "ratio of largest to smallest mechanism OR, floored for 'more than'")
     emit_scalar(lines, "OddsRatioTopValueOneDp", f"{top[1]:.1f}",
                 "highest mechanism OR, one decimal as in Table 20")
     _sig_rest = [n for n in x_mech.columns if n != top[0] and float(res.pvalues[n]) < 0.01]
