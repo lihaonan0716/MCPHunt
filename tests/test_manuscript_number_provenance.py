@@ -48,24 +48,11 @@ HAVE_TRACES = TRACES_DIR.exists() and any(TRACES_DIR.glob("*/agent_traces.json")
 # a generator, plus the reason it is not a measurement. Anything else is a
 # ratchet failure.
 
-STRUCTURAL_LITERALS = {
-    # Design constants, frozen in taxonomy.py before any experiment ran.
-    "147": "total tasks in the registry",
-    "135": "mechanism-tagged tasks",
-    "108": "risk tasks",
-    "27": "hard-negative-specific tasks",
-    "11": "total risk signals",
-    "43": "workflow families",
-    "723": "traces per model (147 tasks x 7 variants, design-determined)",
-    "39": "traces per mechanism (design-determined)",
-    # Statistical conventions, not results.
-    "0.05": "significance threshold",
-    "0.01": "significance threshold",
-    "0.001": "significance threshold",
-    "1.96": "normal quantile",
-    "2025": "year",
-    "100083": "postal code in the author affiliation",
-    "0.7": "floatpagefraction in the style file",
+STRUCTURAL_LITERALS: dict = {
+    # Intentionally empty. Every allowed literal must name the phrase that makes
+    # it a non-result (CONTEXTUAL_LITERALS); a bare string also lets through any
+    # result that happens to equal it. Five former entries (43, 1.96, 2025,
+    # 100083, 0.7) never matched the manuscript and were dropped.
 }
 
 # Literals that collide with plausible result values are allowed ONLY in the
@@ -74,6 +61,17 @@ STRUCTURAL_LITERALS = {
 # download count, and an unsourced "25x cross-mechanism range" pass because
 # "25" was listed outright. Each pattern is searched in the macro-stripped line.
 CONTEXTUAL_LITERALS = {
+    # Design constants, frozen in taxonomy.py before any experiment ran.
+    "147": (r"147(-task| tasks| labels| controlled MCP tasks)", "total tasks in the registry"),
+    "135": (r"135 (tasks|mechanism-tagged)", "mechanism-tagged tasks"),
+    "108": (r"108 risk tasks|n\{ \}108\$ per cell", "risk tasks (Table 7: risk tasks on risky_v1)"),
+    "27": (r"27 hard-negative", "hard-negative-specific tasks"),
+    "11": (r"11 (binary )?risk signals", "total risk signals"),
+    "723": (r"723 traces|n\{=\}723\$", "traces per model (147 tasks x 7 variants)"),
+    # Significance thresholds, not results.
+    "0.05": (r"p < 0\.05|= 0\.05/", "significance threshold"),
+    "0.01": (r"p ?\{?<\}? ?0\.01", "significance threshold"),
+    "0.001": (r"p ?<0\.001|p < 0\.001", "significance threshold"),
     "95": (r"95\\% (Wilson|CI|Tango|score|confidence)",
            "confidence level of an interval"),
     "12": (r"12 (attack types|benign|per mechanism)",

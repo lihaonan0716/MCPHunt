@@ -48,7 +48,7 @@ STAGING_VARIANTS = {
             "  year={2026},\n"
             "  eprint={2604.27819},\n"
             "  archivePrefix={arXiv},\n"
-            "  primaryClass={cs.CR},\n"
+            "  primaryClass={cs.AI},\n"
             "  url={https://openreview.net/forum?id=9mPzIg8uil}\n"
             "}"
         ),

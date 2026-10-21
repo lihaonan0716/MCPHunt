@@ -71,7 +71,7 @@
     "@type": "sc:Person",
     "name": "Haonan Li"
   },
-  "datePublished": "2026-05-06",
+  "datePublished": "2026-04-29",
   "name": "MCPHunt Agent Traces",
   "description": "Agent execution traces measuring cross-boundary data propagation in multi-server MCP agents: 3,615 main-benchmark traces across 147 tasks and 9 mechanism families, 2,706 prompt-mitigation traces, and 465 supplemental traces in separate directories (387 historical single-model guarded traces in live_guard_defense/; 78 same-day baseline/defense browser traces in browser_replication/). Total: 6,786 traces. Each trace includes tool-call events, canary-based risk labels, CRS stratification, and outcome classification.",
   "keywords": [
@@ -86,7 +86,7 @@
     "evaluation"
   ],
   "url": "https://huggingface.co/datasets/lihaonan0716/mcphunt-agent-traces",
-  "citeAs": "@inproceedings{mcphunt2026,\n  title = {{MCPH}unt: An Evaluation Framework for Cross-Boundary Data Propagation in Multi-Server {MCP} Agents},\n  author = {Li, Haonan and Sun, Tianjun and Wang, Yongqing and Zhang, Qisheng},\n  booktitle = {The Fortieth Annual Conference on Neural Information Processing Systems Evaluations and Datasets Track},\n  year = {2026},\n  eprint = {2604.27819},\n  archivePrefix = {arXiv},\n  primaryClass = {cs.CR},\n  url = {https://openreview.net/forum?id=9mPzIg8uil}\n}",
+  "citeAs": "@inproceedings{mcphunt2026,\n  title = {{MCPH}unt: An Evaluation Framework for Cross-Boundary Data Propagation in Multi-Server {MCP} Agents},\n  author = {Li, Haonan and Sun, Tianjun and Wang, Yongqing and Zhang, Qisheng},\n  booktitle = {The Fortieth Annual Conference on Neural Information Processing Systems Evaluations and Datasets Track},\n  year = {2026},\n  eprint = {2604.27819},\n  archivePrefix = {arXiv},\n  primaryClass = {cs.AI},\n  url = {https://openreview.net/forum?id=9mPzIg8uil}\n}",
   "distribution": [
     {
       "@type": "cr:FileObject",
@@ -310,7 +310,7 @@
       "name": "README.md",
       "contentUrl": "README.md",
       "encodingFormat": "text/markdown",
-      "sha256": "7fbd565d0e15478c84a7739b2f2e16a874ca298e17b1bb7dcd6b622a9bd5a1b4"
+      "sha256": "fc3f3ff6fc9d01f52f55586d055309bab4ddb6ad6c20c710a63eee49c965b54f"
     },
     {
       "@type": "cr:FileObject",

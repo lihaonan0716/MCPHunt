@@ -27,8 +27,8 @@ Across **3,615 traces** from **5 models** (GPT-5.4, GPT-5.2, DeepSeek-V4-Flash,
 Gemini-3.1-Pro, MiniMax-M2.7):
 
 - Confirmed canary propagation in **20.2--45.2%** of risky-environment runs;
-  benign controls produce **zero** signals.
-- Risk is **pathway-specific**: a 25x mechanism range; browser-mediated
+  benign controls are 0% unsafe (policy-forced negative control).
+- Risk is **pathway-specific**: 0.0--74.4% across mechanisms; browser-mediated
   pathways remain high-risk (66.7--92.3%) across all models.
 - CRS stratification reveals **policy-violating propagation rates of
   11.5--41.3%**, concentrated in browser-mediated pathways.
@@ -205,7 +205,7 @@ Every numeric value in the paper traces back through:
   year   = {2026},
   eprint = {2604.27819},
   archivePrefix = {arXiv},
-  primaryClass  = {cs.CR},
+  primaryClass  = {cs.AI},
   url    = {https://openreview.net/forum?id=9mPzIg8uil}
 }
 ```

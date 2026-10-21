@@ -21,7 +21,7 @@ def payload(tmp_path):
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"traces": [{}]}) if path.suffix == ".json"
-                        else "Prepared for publication", encoding="utf-8")
+                        else "placeholder", encoding="utf-8")
     meta = {"description": "template", "distribution": [
         {"@id": "main_a", "@type": "cr:FileObject",
          "contentUrl": "main/a.json", "name": "main/a.json",

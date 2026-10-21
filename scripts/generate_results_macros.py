@@ -29,6 +29,7 @@ from mcphunt.taxonomy import (
 from mcphunt.deviance import compute_deviance_shares
 from mcphunt.canary_registry import MIN_FRAGMENT_LEN
 from mcphunt.mcp_driver import SHELL_ALLOWED_COMMANDS
+from mcphunt.environments import ENV_VARIANTS
 
 REPO = Path(__file__).resolve().parents[1]
 TRACES_DIR = REPO / "results" / "agent_traces"
@@ -756,6 +757,9 @@ def main() -> None:
         "commands in the shell MCP server allowlist")
     cmd("minFragmentLen", str(MIN_FRAGMENT_LEN),
         "shortest canary core counted as a fragment match")
+    _ws = {len(v["files"]) for k, v in ENV_VARIANTS.items() if k.startswith("risky")}
+    assert len(_ws) == 1, f"risky variants differ in workspace size: {_ws}"
+    cmd("riskyWorkspaceFiles", str(_ws.pop()), "files in each risky workspace")
     lines.append("")
 
     # ── Collection cost (trace-derived; no local compute is used) ──

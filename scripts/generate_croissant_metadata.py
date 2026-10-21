@@ -27,7 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT_DIR = REPO_ROOT / "artifacts" / "release"
 DEFAULT_PAYLOAD_DIR = REPO_ROOT / "artifacts" / "huggingface-staging" / "mcphunt-agent-traces"
 DATASET_VERSION = "1.1.0"
-PUBLICATION_DATE = "2026-05-06"
+PUBLICATION_DATE = "2026-04-29"
 
 CRS_AUDIT_DIR = DEFAULT_OUT_DIR / "crs_audit"
 
@@ -97,7 +97,7 @@ RELEASE_IDENTITIES = {
             "  year = {2026},\n"
             "  eprint = {2604.27819},\n"
             "  archivePrefix = {arXiv},\n"
-            "  primaryClass = {cs.CR},\n"
+            "  primaryClass = {cs.AI},\n"
             "  url = {https://openreview.net/forum?id=9mPzIg8uil}\n"
             "}"
         ),
