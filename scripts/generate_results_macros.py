@@ -27,6 +27,8 @@ from mcphunt.taxonomy import (
     MECHANISM_INCIDENT_GROUNDING, FAMILY_WORKFLOW_GROUNDING,
 )
 from mcphunt.deviance import compute_deviance_shares
+from mcphunt.canary_registry import MIN_FRAGMENT_LEN
+from mcphunt.mcp_driver import SHELL_ALLOWED_COMMANDS
 
 REPO = Path(__file__).resolve().parents[1]
 TRACES_DIR = REPO / "results" / "agent_traces"
@@ -700,7 +702,7 @@ def main() -> None:
     cmd("totalTracesMainPlusMitigation", fmt_num(total_main + total_mitig),
         "main + prompt mitigation; excludes supplemental arms")
 
-    # ── Supplemental arms included in the planned camera-ready payload ──
+    # ── Supplemental arms included in the camera-ready payload ──
     # Counted directly from the raw trace files so the rebuttal / paper can
     # cite the executed-experiments completeness figure without hand-typing.
     live_guard_defense_path = (
@@ -729,7 +731,7 @@ def main() -> None:
     cmd("totalTracesSupplemental", fmt_num(total_live_guard_defense + total_b3))
     cmd("totalTracesPublished",
         fmt_num(total_main + total_mitig + total_live_guard_defense + total_b3),
-        "planned publication total; remote availability is not yet verified")
+        "published total: main + mitigation + supplemental arms")
 
     # Convenience aliases for primary model mitigation (used most in paper)
     cmd("mitigBaseline", f"\\mitigPrimaryMzeroProp\\%")
@@ -746,6 +748,14 @@ def main() -> None:
         cmd("mitigPVRelReduction", f"{round(100 * (_pv0 - _pv3) / _pv0)}",
             "primary model, policy-violating rate, M0 -> M3, from unrounded counts")
 
+    lines.append("")
+
+    # ── Harness configuration (read from the code the paper describes) ──
+    lines.append("% === Harness configuration (code-derived) ===")
+    cmd("shellAllowlistSize", str(len(SHELL_ALLOWED_COMMANDS.split(","))),
+        "commands in the shell MCP server allowlist")
+    cmd("minFragmentLen", str(MIN_FRAGMENT_LEN),
+        "shortest canary core counted as a fragment match")
     lines.append("")
 
     # ── Collection cost (trace-derived; no local compute is used) ──

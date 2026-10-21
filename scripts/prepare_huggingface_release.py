@@ -180,9 +180,7 @@ tags:
 
 Agent execution traces from the MCPHunt evaluation framework, measuring
 cross-boundary data propagation in multi-server MCP agents.
-This camera-ready bundle is prepared for publication; remote availability has
-not yet been verified. Planned total: 6,786 traces in main, mitigation, and
-supplemental strata.
+Total: 6,786 traces in main, mitigation, and supplemental strata.
 
 ## Contents
 

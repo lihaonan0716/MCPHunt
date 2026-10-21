@@ -203,7 +203,7 @@ class DatasetCardNumbersMatchMacrosTest(unittest.TestCase):
     def test_card_counts(self) -> None:
         card = PREP.DATASET_CARD
         expected = {
-            "totalTracesPublished": "Planned total: {} traces",
+            "totalTracesPublished": "Total: {} traces",
             "totalTracesMain": "`main/`** — {} traces",
             "totalTracesMitigation": "`mitigation/`** — {} traces",
             "totalTracesLiveGuardDefenseArm": "`live_guard_defense/`** — {} DeepSeek",

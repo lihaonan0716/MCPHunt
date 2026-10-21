@@ -83,7 +83,6 @@ CONTEXTUAL_LITERALS = {
     "97": (r"97~million", "97 million SDK downloads (cited)"),
     "1000": (r"approximately 1000 organizations", "cited incident scale"),
     "17": (r"17 attack types", "MCPSecBench's own attack-type count (cited)"),
-    "30": (r"30-command allowlist", "shell-command allowlist size (configuration)"),
     "100": (r"sub-100\\%", "qualitative 'sub-100%' wording"),
     "2026": (r"MCP 2026 roadmap", "year in a cited document title"),
     "42604245": (r"Grant 42604245", "NSFC grant number"),

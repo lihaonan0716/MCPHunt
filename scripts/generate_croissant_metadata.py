@@ -77,6 +77,8 @@ RELEASE_IDENTITIES = {
     "named": {
         "filename": "croissant.json",
         "owner": "Haonan Li",
+        "creators": ["Haonan Li", "Tianjun Sun", "Yongqing Wang",
+                     "Qisheng Zhang"],
         "authors": "Li, Haonan and Sun, Tianjun and Wang, Yongqing and "
                    "Zhang, Qisheng",
         "url": "https://huggingface.co/datasets/lihaonan0716/mcphunt-agent-traces",
@@ -318,8 +320,9 @@ def build_metadata(identity: Dict[str, str]) -> Dict[str, Any]:
         "conformsTo": "http://mlcommons.org/croissant/1.0",
         "version": DATASET_VERSION,
         "license": "https://creativecommons.org/licenses/by/4.0/",
-        "creator": {"@type": "sc:Organization", "name": identity["owner"]},
-        "publisher": {"@type": "sc:Organization", "name": identity["owner"]},
+        "creator": [{"@type": "sc:Person", "name": name}
+                    for name in identity["creators"]],
+        "publisher": {"@type": "sc:Person", "name": identity["owner"]},
         "datePublished": PUBLICATION_DATE,
         "name": "MCPHunt Agent Traces",
         "description": (
@@ -331,7 +334,7 @@ def build_metadata(identity: Dict[str, str]) -> Dict[str, Any]:
             "(live_guard_defense/) and a browser-mechanism cross-arm "
             "replication ships 78 additional traces "
             "(browser_replication/: 39 baseline + 39 defense) for a total of "
-            "6,786 traces planned for publication. Each trace includes the full tool-call "
+            "6,786 traces. Each trace includes the full tool-call "
             "event log, 11 tiered binary risk signals plus one diagnostic "
             "signal computed by canary-based taint tracking, CRS "
             "stratification labels, and outcome classification."
@@ -499,7 +502,7 @@ def finalize_metadata(meta: Dict[str, Any], payload_dir: Path) -> Dict[str, Any]
     counts = payload_trace_counts(payload_dir)
     meta["description"] = (
         "Agent execution traces measuring cross-boundary data propagation in "
-        "multi-server MCP agents. Prepared for publication: "
+        "multi-server MCP agents: "
         f"{counts['main']:,} main-benchmark traces across 147 tasks and 9 "
         f"mechanism families, {counts['mitigation']:,} prompt-mitigation traces, "
         f"and {counts['live_guard_defense'] + counts['browser_replication']:,} "
@@ -507,11 +510,11 @@ def finalize_metadata(meta: Dict[str, Any], payload_dir: Path) -> Dict[str, Any]
         f"({counts['live_guard_defense']:,} historical single-model guarded "
         "traces in live_guard_defense/; "
         f"{counts['browser_replication']:,} same-day baseline/defense browser "
-        f"traces in browser_replication/). Planned total: {sum(counts.values()):,} "
+        f"traces in browser_replication/). Total: {sum(counts.values()):,} "
         "traces. Each trace includes tool-call events, canary-based risk labels, "
         "CRS stratification, and outcome classification."
     )
-    meta["creativeWorkStatus"] = "Prepared for publication; remote availability unverified"
+    meta["creativeWorkStatus"] = "Published"
     meta["additionalProperty"] = [
         {"@type": "sc:PropertyValue", "name": f"{name}_trace_count", "value": n}
         for name, n in counts.items()

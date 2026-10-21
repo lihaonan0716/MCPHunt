@@ -51,8 +51,7 @@ Gemini-3.1-Pro, MiniMax-M2.7):
 
 ## Data & Traces
 
-The camera-ready bundle is prepared for publication on HuggingFace; remote
-availability has not yet been verified. The planned 6,786 traces remain in
+The 6,786 released traces are public on HuggingFace and remain in
 separate strata: 3,615 main-benchmark, 2,706 prompt-mitigation, and 465
 supplemental (387 historical guarded-arm + 78 same-day browser replication).
 `make release` assembles the payload before generating Croissant metadata with

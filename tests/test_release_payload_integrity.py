@@ -34,8 +34,8 @@ def test_finalized_metadata_covers_all_payload_bytes(payload):
     assert len(meta["distribution"]) == 6
     for obj in meta["distribution"]:
         assert obj["sha256"] == hashlib.sha256((root / obj["contentUrl"]).read_bytes()).hexdigest()
-    assert "Planned total: 4 traces" in meta["description"]
-    assert meta["creativeWorkStatus"].startswith("Prepared")
+    assert "Total: 4 traces" in meta["description"]
+    assert meta["creativeWorkStatus"] == "Published"
     (root / "croissant.json").write_text(json.dumps(meta), encoding="utf-8")
     cro.validate_payload(meta, root)
 

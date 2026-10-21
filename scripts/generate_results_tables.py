@@ -752,14 +752,6 @@ def table_odds_ratios(lines: List[str], all_data: Dict[str, List[Dict]]) -> None
                     f"{MODEL_SLUGS[slug]} OR vs {MODEL_SLUGS[ref_model]}")
         emit_scalar(lines, f"OddsRatioModel{tag}P", f"{float(res.pvalues[slug]):.2f}",
                     f"{MODEL_SLUGS[slug]} p, two decimals")
-    # Appendix Q fits the same model with CRS as a covariate on all
-    # mechanism-tagged risky traces; its n is quoted in the prose.
-    _all = sum(1 for slug in MODEL_SLUGS for t in risky(all_data[slug])
-               if t.get("task_id") in MECH_IDS)
-    emit_scalar(lines, "OddsRatioFullN", fmt_thousands(_all),
-                "mechanism-tagged risky traces, all models (CRS included)")
-    emit_scalar(lines, "OddsRatioFullTasks", str(len(MECH_IDS)),
-                "mechanism-tagged tasks")
 
 
 def fmt_thousands(n: int) -> str:

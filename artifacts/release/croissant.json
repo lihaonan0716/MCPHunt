@@ -49,17 +49,31 @@
   "conformsTo": "http://mlcommons.org/croissant/1.0",
   "version": "1.1.0",
   "license": "https://creativecommons.org/licenses/by/4.0/",
-  "creator": {
-    "@type": "sc:Organization",
-    "name": "Haonan Li"
-  },
+  "creator": [
+    {
+      "@type": "sc:Person",
+      "name": "Haonan Li"
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Tianjun Sun"
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Yongqing Wang"
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Qisheng Zhang"
+    }
+  ],
   "publisher": {
-    "@type": "sc:Organization",
+    "@type": "sc:Person",
     "name": "Haonan Li"
   },
   "datePublished": "2026-05-06",
   "name": "MCPHunt Agent Traces",
-  "description": "Agent execution traces measuring cross-boundary data propagation in multi-server MCP agents. Prepared for publication: 3,615 main-benchmark traces across 147 tasks and 9 mechanism families, 2,706 prompt-mitigation traces, and 465 supplemental traces in separate directories (387 historical single-model guarded traces in live_guard_defense/; 78 same-day baseline/defense browser traces in browser_replication/). Planned total: 6,786 traces. Each trace includes tool-call events, canary-based risk labels, CRS stratification, and outcome classification.",
+  "description": "Agent execution traces measuring cross-boundary data propagation in multi-server MCP agents: 3,615 main-benchmark traces across 147 tasks and 9 mechanism families, 2,706 prompt-mitigation traces, and 465 supplemental traces in separate directories (387 historical single-model guarded traces in live_guard_defense/; 78 same-day baseline/defense browser traces in browser_replication/). Total: 6,786 traces. Each trace includes tool-call events, canary-based risk labels, CRS stratification, and outcome classification.",
   "keywords": [
     "MCP",
     "Model Context Protocol",
@@ -296,7 +310,7 @@
       "name": "README.md",
       "contentUrl": "README.md",
       "encodingFormat": "text/markdown",
-      "sha256": "c81a19990eaa30f182d1388b0f51e663211e14b056d36ad571e96dfb0bb7228d"
+      "sha256": "7fbd565d0e15478c84a7739b2f2e16a874ca298e17b1bb7dcd6b622a9bd5a1b4"
     },
     {
       "@type": "cr:FileObject",
@@ -620,7 +634,7 @@
     "Studying pathway-specific propagation patterns across mechanism families",
     "Educational material for tool-use agent safety"
   ],
-  "creativeWorkStatus": "Prepared for publication; remote availability unverified",
+  "creativeWorkStatus": "Published",
   "additionalProperty": [
     {
       "@type": "sc:PropertyValue",
