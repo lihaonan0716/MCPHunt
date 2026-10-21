@@ -725,7 +725,7 @@ def table_odds_ratios(lines: List[str], all_data: Dict[str, List[Dict]]) -> None
     _hi = max(float(np.exp(res.params[n] + 1.96 * res.bse[n])) for n in x_mech.columns
               if n == top[0])
     emit_scalar(lines, "OddsRatioTopCILo", f"{_lo:.1f}", "top-OR CI lower bound")
-    emit_scalar(lines, "OddsRatioTopCIHi", f"{_hi:.0f}", "top-OR CI upper bound")
+    emit_scalar(lines, "OddsRatioTopCIHi", fmt_thousands(round(_hi)), "top-OR CI upper bound")
     _maxp = max(float(res.pvalues[n]) for n in x_mech.columns)
     emit_scalar(lines, "OddsRatioMechMaxP",
                 "0.01" if _maxp < 0.01 else f"{_maxp:.3f}",
