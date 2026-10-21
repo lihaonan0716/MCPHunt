@@ -54,48 +54,53 @@ STRUCTURAL_LITERALS = {
     "135": "mechanism-tagged tasks",
     "108": "risk tasks",
     "27": "hard-negative-specific tasks",
-    "12": "benign controls / risk tasks per mechanism",
-    "9": "risk mechanism families",
-    "8": "MCP servers / Tier-1 signal count",
-    "3": "environment variants per condition / Tier-2 signal count",
     "11": "total risk signals",
-    "7": "environment variants",
     "43": "workflow families",
     "723": "traces per model (147 tasks x 7 variants, design-determined)",
     "39": "traces per mechanism (design-determined)",
     # Statistical conventions, not results.
-    "95": "confidence level",
     "0.05": "significance threshold",
     "0.01": "significance threshold",
     "0.001": "significance threshold",
     "1.96": "normal quantile",
-    # Citation-derived facts about the MCP ecosystem (external sources).
-    "10": "10,000 public servers (cited)",
-    "97": "97 million SDK downloads (cited)",
-    "1": "approximately 1,000 organizations (cited)",
-    "2026": "year",
     "2025": "year",
-    "4": "providers / boundary-case count",
-    "5": "model count",
-    "0": "zero (policy-forced benign rate, zero counts)",
-    "2": "tiers / 2x2 design",
-    "25": "25x mechanism range (derived, see note)",
-    "1000": "cited incident scale",
     "100083": "postal code in the author affiliation",
     "0.7": "floatpagefraction in the style file",
-    "30": "shell-command allowlist size (configuration, not a measurement)",
-    "10000": "bootstrap resample count (a chosen parameter)",
-    "100": "the literal 100 in 'sub-100\\% rates' / percentage arithmetic",
-    "17": "MCPSecBench's own attack-type count, quoted in the related-work table (cited)",
-    # RETRACTED figures, quoted verbatim in the Appendix S correction notice.
-    # These are deliberately hand-typed: they are not results this paper
-    # reports but a record of what an earlier version claimed, and a
-    # correction is only checkable if the retracted numbers appear in it. No
-    # generator can emit them -- that is precisely why they were retracted.
-    # They must never be reintroduced as live claims.
-    "85": "retracted blocking-band lower bound, quoted in the correction",
-    "96": "retracted blocking-band upper bound, quoted in the correction",
 }
+
+# Literals that collide with plausible result values are allowed ONLY in the
+# context that makes them non-results. A bare-string allowlist let a
+# hand-typed "97% relative reduction" pass because "97" was listed for a cited
+# download count, and an unsourced "25x cross-mechanism range" pass because
+# "25" was listed outright. Each pattern is searched in the macro-stripped line.
+CONTEXTUAL_LITERALS = {
+    "95": (r"95\\% (Wilson|CI|Tango|score|confidence)",
+           "confidence level of an interval"),
+    "12": (r"12 (attack types|benign|per mechanism)",
+           "MSB attack-type count (cited) / benign controls / risk tasks per mechanism"),
+    "10000": (r"10000 (public servers|resamples)",
+              "cited server count / bootstrap resample count (a chosen parameter)"),
+    "97": (r"97~million", "97 million SDK downloads (cited)"),
+    "1000": (r"approximately 1000 organizations", "cited incident scale"),
+    "17": (r"17 attack types", "MCPSecBench's own attack-type count (cited)"),
+    "30": (r"30-command allowlist", "shell-command allowlist size (configuration)"),
+    "100": (r"sub-100\\%", "qualitative 'sub-100%' wording"),
+    "2026": (r"MCP 2026 roadmap", "year in a cited document title"),
+    "42604245": (r"Grant 42604245", "NSFC grant number"),
+    # RETRACTED figures, quoted verbatim in the Appendix S correction notice.
+    # They record what an earlier version claimed; a correction is only
+    # checkable if the retracted numbers appear in it. Outside this exact
+    # phrase they fail the ratchet, so they cannot return as live claims.
+    "85": (r"85--96\\%", "retracted blocking-band lower bound, quoted in the correction"),
+    "96": (r"85--96\\%", "retracted blocking-band upper bound, quoted in the correction"),
+}
+
+
+def _allowed(lit: str, stripped_line: str) -> bool:
+    if lit in STRUCTURAL_LITERALS:
+        return True
+    ctx = CONTEXTUAL_LITERALS.get(lit)
+    return ctx is not None and re.search(ctx[0], stripped_line) is not None
 
 # The NeurIPS checklist template ships boilerplate guideline text containing
 # numbers (e.g. "a 96% CI", "CC-BY 4.0"). Those lines are verbatim from the
@@ -211,8 +216,9 @@ class TestNoHandTypedResults(unittest.TestCase):
         for lineno, line in _tex_lines(filename):
             if is_checklist and CHECKLIST_BOILERPLATE.match(line):
                 continue
-            for lit in RESULT_LITERAL.findall(_strip_macros(line)):
-                if lit in STRUCTURAL_LITERALS:
+            stripped = _strip_macros(line)
+            for lit in RESULT_LITERAL.findall(stripped):
+                if _allowed(lit, stripped):
                     continue
                 out.append((lineno, lit, line[:140]))
         return out

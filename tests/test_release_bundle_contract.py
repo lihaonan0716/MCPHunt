@@ -182,5 +182,41 @@ class ReleaseBundleContractTest(unittest.TestCase):
         )
 
 
+MACROS_PATH = REPO_ROOT / "paper" / "results_macros.tex"
+
+
+@unittest.skipUnless(MACROS_PATH.exists(), "manuscript not present (private paper repo)")
+class DatasetCardNumbersMatchMacrosTest(unittest.TestCase):
+    """The card is hand-written prose; its counts must equal the generated macros.
+
+    Nothing else ties the card to the traces, so a regenerated count would
+    otherwise leave the published card stale.
+    """
+
+    def _macro(self, name: str) -> str:
+        import re
+        text = MACROS_PATH.read_text(encoding="utf-8").replace("{,}", ",")
+        m = re.search(r"\\newcommand\{\\" + name + r"\}\{([^}]*)\}", text)
+        self.assertIsNotNone(m, f"macro \\{name} missing")
+        return m.group(1)
+
+    def test_card_counts(self) -> None:
+        card = PREP.DATASET_CARD
+        expected = {
+            "totalTracesPublished": "Planned total: {} traces",
+            "totalTracesMain": "`main/`** — {} traces",
+            "totalTracesMitigation": "`mitigation/`** — {} traces",
+            "totalTracesLiveGuardDefenseArm": "`live_guard_defense/`** — {} DeepSeek",
+            "totalTracesBrowserReplication": "`browser_replication/`** — {} DeepSeek",
+            "missPrevSampleN": "(n={}, seed=",
+            "missPrevSeed": "seed={})",
+            "missPrevPool": "of the {} risky-environment",
+            "cmPrimaryTotal": "| GPT-5.4 | OpenAI | {} |",
+        }
+        for name, template in expected.items():
+            with self.subTest(macro=name):
+                self.assertIn(template.format(self._macro(name)), card)
+
+
 if __name__ == "__main__":
     unittest.main()

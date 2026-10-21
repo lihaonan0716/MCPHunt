@@ -660,6 +660,7 @@ def main() -> None:
 
     total_mitig = 0
     mitig_model_count = 0
+    mitig_pv_rates: dict[str, float] = {}
     if MITIG_DIR.exists():
         import glob as _glob
         for f in sorted(_glob.glob(str(MITIG_DIR / "*/agent_traces*.json"))):
@@ -690,6 +691,8 @@ def main() -> None:
                 cmd(f"{tag}Prop", fmt_pct(k, n))
                 cmd(f"{tag}Util", fmt_pct(u, n))
                 cmd(f"{tag}PV", fmt_pct(pv, len(nc)))
+                if nc:
+                    mitig_pv_rates[tag] = pv / len(nc)
 
     cmd("numMitigModels", str(mitig_model_count))
     cmd("totalTracesMitigation", fmt_num(total_mitig))
@@ -737,6 +740,11 @@ def main() -> None:
     cmd("mitigBestUtility", f"\\mitigPrimaryMthreeUtil\\%")
     cmd("mitigPVBaseline", f"\\mitigPrimaryMzeroPV\\%")
     cmd("mitigPVBest", f"\\mitigPrimaryMthreePV\\%")
+    _pv0 = mitig_pv_rates.get("mitigPrimaryMzero")
+    _pv3 = mitig_pv_rates.get("mitigPrimaryMthree")
+    if _pv0 and _pv3 is not None:
+        cmd("mitigPVRelReduction", f"{round(100 * (_pv0 - _pv3) / _pv0)}",
+            "primary model, policy-violating rate, M0 -> M3, from unrounded counts")
 
     lines.append("")
 
