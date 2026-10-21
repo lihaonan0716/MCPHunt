@@ -427,7 +427,7 @@ def main() -> None:
     cmd("mechPseudoR", f"{_ds['mech_pseudo_r2']:.4f}")
     cmd("modelPseudoR", f"{_ds['model_pseudo_r2']:.4f}")
     cmd("fullPseudoR", f"{_ds['full_pseudo_r2']:.4f}")
-    cmd("devianceNonCrsN", str(_ds["n_rows_used"]))
+    cmd("devianceNonCrsN", fmt_num(_ds["n_rows_used"]))
 
     lines.append("")
 
