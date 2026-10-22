@@ -94,6 +94,7 @@ OVERCLAIM_BASELINE = {
     r"\bcausal (?:canary )?tracking\b": 0,
     r"\brequires \\emph\{data-flow-aware\}": 0,
     r"\bprimary driver\b": 0,
+    r"\bconsistently fails\b": 0,
 }
 
 
