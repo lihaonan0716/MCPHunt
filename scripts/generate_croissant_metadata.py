@@ -483,10 +483,25 @@ def file_sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def resolve_url(dataset_url: str, rel_path: str) -> str:
+    """Absolute download URL for a payload file on the dataset's main branch.
+
+    contentUrl must be absolute: mlcroissant resolves a relative contentUrl
+    against the local folder of the JSON-LD file, so a Croissant read from its
+    hosted URL could not load any record ("Could not find node folder=None").
+    """
+    return f"{dataset_url.rstrip('/')}/resolve/main/{rel_path}"
+
+
+def payload_path(obj: Dict[str, Any]) -> str:
+    """Payload-relative path of a distribution entry (its ``name``)."""
+    return obj.get("name") if isinstance(obj.get("name"), str) else obj.get("contentUrl")
+
+
 def finalize_metadata(meta: Dict[str, Any], payload_dir: Path) -> Dict[str, Any]:
     """Declare and hash the finalized payload, preserving existing reference IDs."""
     files = payload_files(payload_dir)
-    declared = {obj["contentUrl"] for obj in meta["distribution"]}
+    declared = {payload_path(obj) for obj in meta["distribution"]}
     missing = declared - files.keys()
     if missing:
         raise ValueError(f"required release files missing: {sorted(missing)}")
@@ -499,7 +514,10 @@ def finalize_metadata(meta: Dict[str, Any], payload_dir: Path) -> Dict[str, Any]
                                                            "application/octet-stream"),
         })
     for obj in meta["distribution"]:
-        obj["sha256"] = file_sha256(files[obj["contentUrl"]])
+        rel = payload_path(obj)
+        obj["sha256"] = file_sha256(files[rel])
+        if meta.get("url"):
+            obj["contentUrl"] = resolve_url(meta["url"], rel)
     counts = payload_trace_counts(payload_dir)
     meta["description"] = (
         "Agent execution traces measuring cross-boundary data propagation in "
@@ -548,7 +566,10 @@ def validate_payload(meta: Dict[str, Any], payload_dir: Path) -> None:
     declared = set()
     ids = set()
     for obj in entries:
-        name = obj.get("contentUrl")
+        name = payload_path(obj)
+        expected = resolve_url(meta["url"], name) if meta.get("url") and isinstance(name, str) else name
+        if obj.get("contentUrl") != expected:
+            raise ValueError(f"contentUrl does not resolve to the declared file: {name!r}")
         if not isinstance(name, str) or name not in files:
             raise ValueError(f"declared file missing or outside payload: {name!r}")
         if name in declared or obj.get("@id") in ids:

@@ -115,3 +115,19 @@ def test_mlcroissant_accepts_finalized_metadata(payload):
     path = root / "croissant.json"
     path.write_text(json.dumps(meta), encoding="utf-8")
     mlc.Dataset(jsonld=path)
+
+
+def test_content_urls_resolve_to_the_hosted_files(payload):
+    # A relative contentUrl loads only next to the payload; mlcroissant reading
+    # the Croissant from its hosted URL fails on the first download.
+    root, meta = payload
+    meta = copy.deepcopy(meta)
+    meta["url"] = "https://huggingface.co/datasets/owner/repo"
+    meta = cro.finalize_metadata(meta, root)
+    for obj in meta["distribution"]:
+        assert obj["contentUrl"] == (
+            "https://huggingface.co/datasets/owner/repo/resolve/main/" + obj["name"])
+    cro.validate_payload(meta, root)
+    meta["distribution"][0]["contentUrl"] = obj["name"]
+    with pytest.raises(ValueError, match="does not resolve"):
+        cro.validate_payload(meta, root)
