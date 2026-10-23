@@ -388,6 +388,7 @@ def build_metadata(identity: Dict[str, str]) -> Dict[str, Any]:
             "post-hoc canary-based risk labels."
         ),
         "rai:dataCollectionType": "Synthetic",
+        "rai:hasSyntheticData": True,
         "rai:dataCollectionRawData": (
             "Raw traces are the primary data. Environment configurations and "
             "canary values are defined in src/mcphunt/environments.py and "
@@ -421,7 +422,7 @@ def build_metadata(identity: Dict[str, str]) -> Dict[str, Any]:
             "and maintaining the dataset for at least 24 months after "
             "publication."
         ),
-        "rai:dataLimitation": (
+        "rai:dataLimitations": (
             "All 147 tasks are researcher-designed and synthetic. The 8 MCP "
             "servers represent common patterns but not the full ecosystem. "
             "Main-benchmark detection captures verbatim canary matches but "

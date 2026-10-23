@@ -182,8 +182,9 @@ def check_croissant(result: CheckResult) -> None:
     ]
     rai_fields = [
         "rai:dataCollection", "rai:dataCollectionType",
-        "rai:dataAnnotationProtocol", "rai:dataLimitation",
-        "rai:personalSensitiveInformation",
+        "rai:dataAnnotationProtocol", "rai:dataLimitations",
+        "rai:personalSensitiveInformation", "rai:hasSyntheticData",
+        "rai:dataBiases", "rai:dataSocialImpact", "rai:dataUseCases",
     ]
     # Loop over identities rather than checking one by name: whatever ships must
     # satisfy the same core and RAI requirements, however many identities exist.
